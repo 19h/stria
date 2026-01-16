@@ -1,0 +1,101 @@
+[package]
+name = "stria"
+description = "Modern production-grade DNS server with DNSSEC, DoT/DoH/DoQ, filtering, and comprehensive observability"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+default-run = "stria"
+
+[[bin]]
+name = "stria"
+path = "src/main.rs"
+
+[[bin]]
+name = "stria-ctl"
+path = "src/ctl.rs"
+
+[features]
+default = ["full"]
+full = ["doh", "dot", "doq", "dnssec", "filtering", "metrics", "zones"]
+minimal = []
+doh = ["stria-server/doh"]
+dot = ["stria-server/dot"]
+doq = ["stria-server/doq"]
+dnssec = []
+filtering = []
+metrics = []
+zones = []
+io-uring = ["stria-server/io-uring"]
+
+[dependencies]
+stria-proto = { path = "../stria-proto" }
+stria-server = { path = "../stria-server" }
+stria-resolver = { path = "../stria-resolver" }
+stria-cache = { path = "../stria-cache" }
+stria-dnssec = { path = "../stria-dnssec" }
+stria-filter = { path = "../stria-filter" }
+stria-metrics = { path = "../stria-metrics" }
+stria-config = { path = "../stria-config" }
+stria-zone = { path = "../stria-zone" }
+stria-ede = { path = "../stria-ede" }
+
+tokio = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+miette = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+console = { workspace = true }
+dialoguer = { workspace = true }
+indicatif = { workspace = true }
+arc-swap = { workspace = true }
+
+# Signal handling
+ctrlc = { version = "3.4", features = ["termination"] }
+
+# Additional utilities
+async-trait = { workspace = true }
+dirs = "5.0"
+num_cpus = "1.16"
+serde_json = { workspace = true }
+rand = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+criterion = { workspace = true }
+tokio-test = "0.4"
+rcgen = "0.13"
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+tokio-rustls = { workspace = true }
+quinn = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+data-encoding = { workspace = true }
+parking_lot = { workspace = true }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[[bench]]
+name = "e2e_query"
+harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

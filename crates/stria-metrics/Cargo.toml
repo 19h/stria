@@ -1,0 +1,36 @@
+[package]
+name = "stria-metrics"
+description = "Comprehensive observability with Prometheus metrics, OpenTelemetry tracing, and structured logging"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "metrics", "prometheus", "opentelemetry", "observability"]
+categories = ["development-tools::profiling"]
+
+[features]
+default = ["prometheus", "otlp"]
+prometheus = ["dep:metrics-exporter-prometheus"]
+otlp = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry"]
+
+[dependencies]
+tokio = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+once_cell = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }

@@ -1,0 +1,74 @@
+# Stria DNS - Enterprise
+# High-availability DNS with split-horizon, metrics, and zone hosting
+
+listen:
+  - 53
+  - 853/tls
+  - 443/https
+
+# Primary: internal resolvers, fallback: public
+upstream:
+  - 10.0.0.53          # Primary internal
+  - 10.0.0.54          # Secondary internal
+  - 1.1.1.1            # Fallback
+
+# Split-horizon DNS
+views:
+  internal:
+    match: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    zones:
+      - file: /etc/stria/zones/corp.example.com.zone
+      - file: /etc/stria/zones/10.in-addr.arpa.zone
+      
+  external:
+    match: any
+    upstream:
+      - 1.1.1.1
+      - 8.8.8.8
+
+# Host authoritative zones
+zones:
+  - name: example.com
+    type: primary
+    file: /etc/stria/zones/example.com.zone
+    dnssec:
+      algorithm: ECDSAP256SHA256
+      
+  - name: example.com
+    type: secondary  
+    primary: 10.0.0.60
+    tsig: xfer-key
+
+# Access control
+acl:
+  allow-query: any
+  allow-recursion: 10.0.0.0/8, 172.16.0.0/12
+  allow-transfer: 10.0.0.53, 10.0.0.54
+
+# Rate limiting
+ratelimit:
+  qps: 1000
+  slip: 2
+
+# Caching
+cache:
+  size: 500000
+  serve-stale: true
+  prefetch: true
+
+# Metrics & observability  
+metrics:
+  prometheus: :9153
+  otlp: http://otel-collector:4317
+
+# Logging
+log:
+  level: info
+  format: json
+  queries: /var/log/stria/queries.log
+
+# TLS
+tls:
+  cert: /etc/stria/tls/server.crt
+  key: /etc/stria/tls/server.key
+  ca: /etc/stria/tls/ca.crt

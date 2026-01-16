@@ -1,0 +1,27 @@
+# Stria DNS - Home Network
+# Ad-blocking DNS server with caching
+
+listen: 53
+
+upstream:
+  - 1.1.1.1
+  - 9.9.9.9
+
+# Block ads, trackers, malware
+block:
+  - stevenblack/unified        # Ads + malware
+  - energized/spark            # Lightweight tracker blocking
+  
+# Never block these (even if on blocklists)
+allow:
+  - s.youtube.com              # YouTube history
+  - www.googleadservices.com   # Google Shopping
+
+cache:
+  size: 50000
+  
+# Local DNS for your home devices
+local:
+  router.home: 192.168.1.1
+  nas.home: 192.168.1.10
+  printer.home: 192.168.1.20

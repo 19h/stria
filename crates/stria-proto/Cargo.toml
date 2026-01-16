@@ -1,0 +1,47 @@
+[package]
+name = "stria-proto"
+description = "DNS protocol types, wire format parsing, and record type implementations for Stria DNS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "protocol", "wire-format", "dnssec", "edns"]
+categories = ["network-programming", "parser-implementations"]
+
+[features]
+default = ["std"]
+std = []
+simd = ["memchr/std"]
+
+[dependencies]
+bytes = { workspace = true }
+smallvec = { workspace = true }
+thiserror = { workspace = true }
+bitflags = { workspace = true }
+num_enum = { workspace = true }
+derive_more = { workspace = true }
+memchr = { workspace = true }
+compact_str = { workspace = true }
+serde = { workspace = true }
+data-encoding = { workspace = true }
+base64 = { workspace = true }
+ipnet = { workspace = true }
+hashbrown = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+test-case = { workspace = true }
+rstest = { workspace = true }
+
+[[bench]]
+name = "parsing"
+harness = false
+
+[[bench]]
+name = "serialization"
+harness = false

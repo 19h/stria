@@ -1,0 +1,46 @@
+[package]
+name = "stria-cache"
+description = "Multi-tier DNS caching with L1/L2/L3 support, serve-stale, prefetch, and cache poisoning resistance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "cache", "caching", "ttl", "performance"]
+categories = ["caching", "asynchronous"]
+
+[features]
+default = []
+redis = ["dep:redis", "dep:deadpool-redis"]
+
+[dependencies]
+stria-proto = { path = "../stria-proto" }
+stria-config = { path = "../stria-config" }
+stria-metrics = { path = "../stria-metrics" }
+
+tokio = { workspace = true }
+moka = { workspace = true }
+redis = { workspace = true, optional = true }
+deadpool-redis = { workspace = true, optional = true }
+
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+crossbeam-utils = { workspace = true }
+hashbrown = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+criterion = { workspace = true }
+tempfile = { workspace = true }
+
+[[bench]]
+name = "cache_ops"
+harness = false

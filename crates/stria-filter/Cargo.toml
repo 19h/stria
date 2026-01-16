@@ -1,0 +1,49 @@
+[package]
+name = "stria-filter"
+description = "High-performance DNS filtering engine with blocklist support, rules, exceptions, and CNAME tracking"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "filtering", "blocklist", "adblock", "privacy"]
+categories = ["network-programming"]
+
+[features]
+default = ["http"]
+http = ["dep:reqwest"]
+
+[dependencies]
+stria-proto = { path = "../stria-proto" }
+stria-config = { path = "../stria-config" }
+stria-metrics = { path = "../stria-metrics" }
+
+tokio = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli"], optional = true }
+
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+hashbrown = { workspace = true }
+regex = "1.11"
+aho-corasick = "1.1"
+memchr = { workspace = true }
+compact_str = { workspace = true }
+url = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+criterion = { workspace = true }
+tempfile = { workspace = true }
+wiremock = { workspace = true }
+
+[[bench]]
+name = "filter_matching"
+harness = false

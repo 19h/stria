@@ -1,0 +1,35 @@
+# Stria DNS - Privacy Focused
+# Maximum privacy with encrypted upstream and aggressive blocking
+
+listen:
+  - 53
+  - 853/tls
+  - 443/https
+
+# Only use encrypted upstream (no plaintext DNS)
+upstream:
+  - tls://1.1.1.1:853                    # Cloudflare DoT
+  - tls://dns.quad9.net:853              # Quad9 DoT  
+  - https://cloudflare-dns.com/dns-query # Cloudflare DoH
+
+# Aggressive blocking
+block:
+  - stevenblack/unified
+  - energized/ultimate
+  - oisd/full
+  - hagezi/pro
+
+# DNSSEC validation
+dnssec: true
+
+# Minimize data exposure
+privacy:
+  # Don't send client subnet info
+  ecs: false
+  # Minimize query name in requests
+  qname-minimization: true
+
+# TLS certificates (required for DoT/DoH)
+tls:
+  cert: /etc/stria/cert.pem
+  key: /etc/stria/key.pem

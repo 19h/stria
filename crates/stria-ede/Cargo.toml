@@ -1,0 +1,25 @@
+[package]
+name = "stria-ede"
+description = "Extended DNS Errors (RFC 8914) implementation for detailed failure diagnostics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "error", "diagnostics", "rfc8914"]
+categories = ["network-programming"]
+
+[features]
+default = []
+
+[dependencies]
+stria-proto = { path = "../stria-proto" }
+
+thiserror = { workspace = true }
+num_enum = { workspace = true }
+serde = { workspace = true }
+compact_str = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }

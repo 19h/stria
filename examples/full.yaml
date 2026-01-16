@@ -1,0 +1,146 @@
+# Stria DNS Server - Full Configuration Example
+# This shows all available configuration options with their defaults
+
+server:
+  name: stria
+  workers: 0  # 0 = auto-detect CPU cores
+  
+listeners:
+  udp:
+    - address: 0.0.0.0:53
+      reuseport: true
+    - address: "[::]:53"
+      reuseport: true
+  tcp:
+    - address: 0.0.0.0:53
+      backlog: 1024
+      idle_timeout: 10
+      tcp_fastopen: true
+      
+  # DNS over TLS (DoT) - RFC 7858
+  # Uncomment and configure TLS certificates to enable
+  # dot:
+  #   - address: 0.0.0.0:853
+  #     reuseport: true
+  #     backlog: 1024
+  #     idle_timeout: 30
+  #     tls:
+  #       cert: /etc/stria/tls/cert.pem
+  #       key: /etc/stria/tls/key.pem
+  #       min_version: "1.2"
+  #       client_auth: false
+  
+  # DNS over HTTPS (DoH) - RFC 8484
+  # doh:
+  #   - address: 0.0.0.0:443
+  #     path: /dns-query
+  #     http2: true
+  #     reuseport: true
+  #     backlog: 1024
+  #     idle_timeout: 30
+  #     tls:
+  #       cert: /etc/stria/tls/cert.pem
+  #       key: /etc/stria/tls/key.pem
+  #       min_version: "1.2"
+  #       alpn:
+  #         - h2
+  #         - http/1.1
+  
+  # DNS over QUIC (DoQ) - RFC 9250
+  # doq:
+  #   - address: 0.0.0.0:853
+  #     reuseport: true
+  #     idle_timeout: 30
+  #     max_streams: 100
+  #     tls:
+  #       cert: /etc/stria/tls/cert.pem
+  #       key: /etc/stria/tls/key.pem
+
+resolver:
+  mode: forward  # forward, recursive, authoritative
+  upstreams:
+    - address: 1.1.1.1:53
+      protocol: udp
+    - address: 1.0.0.1:53
+      protocol: udp
+    - address: 9.9.9.9:53
+      protocol: udp
+  timeout_ms: 5000
+  retries: 2
+  qname_minimization: true
+  enable_0x20: true
+  max_recursion_depth: 30
+
+cache:
+  enabled: true
+  max_entries: 100000
+  min_ttl: 30
+  max_ttl: 604800  # 7 days
+  negative_ttl: 900
+  serve_stale: true
+  stale_ttl: 86400
+  prefetch: true
+  prefetch_threshold: 10
+
+dnssec:
+  validation: true
+  aggressive_nsec: true
+
+security:
+  rrl:
+    enabled: true
+    responses_per_second: 5
+    window: 15
+    slip: 2
+    ipv4_prefix: 24
+    ipv6_prefix: 56
+  limits:
+    max_tcp_connections: 10000
+    max_udp_payload: 4096
+
+filter:
+  enabled: true
+  cname_protection: true
+  blocked_response: nxdomain  # nxdomain, nodata, refused, ip, null
+  
+  blocklists:
+    - name: stevenblack
+      url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+      format: hosts
+      enabled: true
+    - name: oisd-small
+      url: https://small.oisd.nl/domains
+      format: domains
+      enabled: true
+      
+  # Custom block rules (always blocked)
+  custom_block:
+    - ads.example.com
+    - tracking.example.net
+    
+  # Custom allow rules (never blocked)
+  custom_allow:
+    - s.youtube.com
+    - www.googleadservices.com
+
+metrics:
+  enabled: true
+  prometheus:
+    enabled: true
+    listen: 127.0.0.1:9153
+    path: /metrics
+
+logging:
+  level: info
+  format: text
+  output: stdout
+  query_log: false
+
+control:
+  enabled: true
+  socket_path: /var/run/stria/control.sock
+  # Path to persist custom block/allow rules added via stria-ctl
+  rules_file: /var/lib/stria/custom_rules.json
+
+# Zone configuration (for authoritative mode)
+zones: []

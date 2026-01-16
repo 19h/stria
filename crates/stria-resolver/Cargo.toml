@@ -1,0 +1,53 @@
+[package]
+name = "stria-resolver"
+description = "Recursive DNS resolver with connection pooling, upstream management, and QNAME minimization"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "resolver", "recursive", "networking"]
+categories = ["network-programming", "asynchronous"]
+
+[features]
+default = []
+
+[dependencies]
+stria-proto = { path = "../stria-proto" }
+stria-cache = { path = "../stria-cache" }
+stria-config = { path = "../stria-config" }
+stria-dnssec = { path = "../stria-dnssec" }
+stria-metrics = { path = "../stria-metrics" }
+stria-ede = { path = "../stria-ede" }
+
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+socket2 = { workspace = true }
+
+# TLS for upstream DoT
+rustls = { workspace = true }
+tokio-rustls = { workspace = true }
+webpki-roots = { workspace = true }
+
+# QUIC for upstream DoQ
+quinn = { workspace = true }
+
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+rand = { workspace = true }
+lru = { workspace = true }
+url = { workspace = true }
+ipnet = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+mockall = { workspace = true }
+tempfile = { workspace = true }

@@ -1,0 +1,47 @@
+[package]
+name = "stria-dnssec"
+description = "Full DNSSEC validation with trust anchor management, algorithm support, and key rollover"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "dnssec", "cryptography", "security", "validation"]
+categories = ["cryptography", "network-programming"]
+
+[features]
+default = ["rsa", "ecdsa", "eddsa"]
+rsa = []
+ecdsa = ["dep:p256", "dep:p384"]
+eddsa = ["dep:ed25519-dalek"]
+
+[dependencies]
+stria-proto = { path = "../stria-proto" }
+stria-config = { path = "../stria-config" }
+stria-metrics = { path = "../stria-metrics" }
+
+tokio = { workspace = true }
+ring = { workspace = true }
+ed25519-dalek = { workspace = true, optional = true }
+p256 = { workspace = true, optional = true }
+p384 = { workspace = true, optional = true }
+sha1 = "0.10"
+sha2 = { workspace = true }
+digest = { workspace = true }
+data-encoding = { workspace = true }
+base64 = { workspace = true }
+
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+arc-swap = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }

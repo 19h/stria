@@ -1,0 +1,37 @@
+[package]
+name = "stria-config"
+description = "Intuitive YAML-based configuration system for Stria DNS with validation and hot-reload"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "configuration", "yaml", "settings"]
+categories = ["config"]
+
+[features]
+default = []
+
+[dependencies]
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+thiserror = { workspace = true }
+tracing = { workspace = true }
+arc-swap = { workspace = true }
+parking_lot = { workspace = true }
+ipnet = { workspace = true }
+url = { workspace = true }
+chrono = { workspace = true }
+derive_more = { workspace = true }
+regex = "1.11"
+
+# File watching for hot reload
+notify = "7"
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }

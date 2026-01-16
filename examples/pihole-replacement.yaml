@@ -1,0 +1,47 @@
+# Stria DNS - Pi-hole Replacement
+# Drop-in replacement for Pi-hole with better performance
+
+listen: 53
+
+upstream:
+  - 1.1.1.1
+  - 1.0.0.1
+
+# Comprehensive ad/tracker blocking
+block:
+  # Core blocking lists (built-in shortcuts)
+  - stevenblack/unified
+  - energized/blu
+  - oisd/small
+
+  # Direct URLs also work
+  - https://v.firebog.net/hosts/AdguardDNS.txt
+  - https://raw.githubusercontent.com/DandelionSprout/adfilt/master/Alternate%20versions/AdGuardHomeBlocklist.txt
+
+# Whitelist for common false positives
+allow:
+  - cdn.optimizely.com
+  - s.youtube.com
+  - video-stats.l.google.com
+  - www.googleadservices.com
+  - s.amazon-adsystem.com   # Amazon shopping
+
+# Local DNS entries (like Pi-hole's "Local DNS Records")
+local:
+  pihole.local: 192.168.1.2
+  homeassistant.local: 192.168.1.3
+  plex.local: 192.168.1.4
+
+# CNAME records (like Pi-hole's "Local CNAME Records")  
+cname:
+  ha.home: homeassistant.local
+  media.home: plex.local
+
+# Cache
+cache:
+  size: 100000
+
+# Optional: API for stats (Pi-hole admin replacement)
+api:
+  listen: :8080
+  # Access the dashboard at http://your-server:8080

@@ -1,0 +1,56 @@
+# Stria DNS Server - Docker Compose Example
+#
+# Usage:
+#   docker compose up -d
+#
+# With custom config:
+#   docker compose -f docker-compose.yml up -d
+
+services:
+  stria:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stria-dns
+    restart: unless-stopped
+    ports:
+      # DNS
+      - "53:53/udp"
+      - "53:53/tcp"
+      # DoT (optional - requires TLS config)
+      # - "853:853/tcp"
+      # DoH (optional - requires TLS config)
+      # - "443:443/tcp"
+      # DoQ (optional - requires TLS config)
+      # - "853:853/udp"
+      # Control API
+      - "8080:8080/tcp"
+      # Metrics
+      - "9153:9153/tcp"
+    volumes:
+      # Custom configuration
+      - ./config:/etc/stria:ro
+      # Persistent data (cache, custom rules)
+      - stria-data:/var/lib/stria
+      # TLS certificates (if using DoT/DoH/DoQ)
+      # - ./certs:/etc/stria/certs:ro
+    environment:
+      - RUST_LOG=stria=info
+    healthcheck:
+      test: ["CMD", "stria-ctl", "stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cap_add:
+      - NET_BIND_SERVICE
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev
+
+volumes:
+  stria-data:

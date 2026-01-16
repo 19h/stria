@@ -1,0 +1,4 @@
+# Stria DNS - Minimal Config
+# Just forward queries to Cloudflare. That's it.
+
+upstream: 1.1.1.1

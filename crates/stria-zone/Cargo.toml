@@ -1,0 +1,43 @@
+[package]
+name = "stria-zone"
+description = "DNS zone management with AXFR/IXFR replication, NOTIFY, dynamic updates, and catalog zones"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["dns", "zone", "axfr", "ixfr", "replication"]
+categories = ["network-programming"]
+
+[features]
+default = []
+ldap = []
+sql = ["dep:sqlx"]
+etcd = []
+consul = []
+
+[dependencies]
+stria-proto = { path = "../stria-proto" }
+stria-config = { path = "../stria-config" }
+stria-dnssec = { path = "../stria-dnssec" }
+stria-metrics = { path = "../stria-metrics" }
+
+tokio = { workspace = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql"], optional = true }
+
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+hashbrown = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
