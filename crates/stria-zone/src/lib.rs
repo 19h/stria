@@ -63,13 +63,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, info, instrument, warn};
 
-use stria_proto::{
-    Header, Message, Name, OpCode, Question, RData, RecordClass, RecordType,
-    ResourceRecord, ResponseCode,
-};
 use stria_proto::class::Class;
-use stria_proto::rtype::Type;
 use stria_proto::rdata::SOA;
+use stria_proto::rtype::Type;
+use stria_proto::{
+    Header, Message, Name, OpCode, Question, RData, RecordClass, RecordType, ResourceRecord,
+    ResponseCode,
+};
 
 // ============================================================================
 // Error Types
@@ -864,7 +864,9 @@ impl Zone {
             self.ns_set.clear();
         }
 
-        self.nodes.get_mut(name).and_then(|node| node.remove_rrset(rtype))
+        self.nodes
+            .get_mut(name)
+            .and_then(|node| node.remove_rrset(rtype))
     }
 
     /// Updates the serial number.
@@ -978,7 +980,8 @@ impl ZoneTree {
     /// Inserts a zone into the tree.
     pub fn insert(&self, zone: Zone) {
         let name = zone.name().clone();
-        self.zones.insert(name, Arc::new(ArcSwap::from_pointee(zone)));
+        self.zones
+            .insert(name, Arc::new(ArcSwap::from_pointee(zone)));
     }
 
     /// Removes a zone from the tree.
@@ -1107,7 +1110,12 @@ pub trait ZoneStore: Send + Sync {
     async fn zone_exists(&self, name: &Name) -> Result<bool>;
 
     /// Gets records at a specific name and type.
-    async fn get_records(&self, zone: &Name, name: &Name, rtype: RecordType) -> Result<Vec<ResourceRecord>>;
+    async fn get_records(
+        &self,
+        zone: &Name,
+        name: &Name,
+        rtype: RecordType,
+    ) -> Result<Vec<ResourceRecord>>;
 
     /// Gets all records at a specific name.
     async fn get_all_records(&self, zone: &Name, name: &Name) -> Result<Vec<ResourceRecord>>;
@@ -1207,9 +1215,11 @@ impl ZoneStore for InMemoryZoneStore {
     }
 
     async fn delete_zone(&self, name: &Name) -> Result<()> {
-        self.zones.remove(name).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: name.to_string(),
-        })?;
+        self.zones
+            .remove(name)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: name.to_string(),
+            })?;
         Ok(())
     }
 
@@ -1221,10 +1231,18 @@ impl ZoneStore for InMemoryZoneStore {
         Ok(self.zones.contains_key(name))
     }
 
-    async fn get_records(&self, zone: &Name, name: &Name, rtype: RecordType) -> Result<Vec<ResourceRecord>> {
-        let zone = self.zones.get(zone).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: zone.to_string(),
-        })?;
+    async fn get_records(
+        &self,
+        zone: &Name,
+        name: &Name,
+        rtype: RecordType,
+    ) -> Result<Vec<ResourceRecord>> {
+        let zone = self
+            .zones
+            .get(zone)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: zone.to_string(),
+            })?;
 
         Ok(zone
             .get_records(name, rtype)
@@ -1233,9 +1251,12 @@ impl ZoneStore for InMemoryZoneStore {
     }
 
     async fn get_all_records(&self, zone_name: &Name, name: &Name) -> Result<Vec<ResourceRecord>> {
-        let zone = self.zones.get(zone_name).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: zone_name.to_string(),
-        })?;
+        let zone = self
+            .zones
+            .get(zone_name)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: zone_name.to_string(),
+            })?;
 
         let records = zone
             .get_node(name)
@@ -1250,18 +1271,24 @@ impl ZoneStore for InMemoryZoneStore {
     }
 
     async fn add_record(&self, zone_name: &Name, record: ResourceRecord) -> Result<()> {
-        let mut zone = self.zones.get_mut(zone_name).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: zone_name.to_string(),
-        })?;
+        let mut zone = self
+            .zones
+            .get_mut(zone_name)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: zone_name.to_string(),
+            })?;
 
         zone.add_record(record);
         Ok(())
     }
 
     async fn delete_record(&self, zone_name: &Name, record: &ResourceRecord) -> Result<()> {
-        let mut zone = self.zones.get_mut(zone_name).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: zone_name.to_string(),
-        })?;
+        let mut zone = self
+            .zones
+            .get_mut(zone_name)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: zone_name.to_string(),
+            })?;
 
         if let Some(node) = zone.nodes.get_mut(record.name()) {
             node.remove_record(record);
@@ -1271,26 +1298,35 @@ impl ZoneStore for InMemoryZoneStore {
     }
 
     async fn delete_rrset(&self, zone_name: &Name, name: &Name, rtype: RecordType) -> Result<()> {
-        let mut zone = self.zones.get_mut(zone_name).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: zone_name.to_string(),
-        })?;
+        let mut zone = self
+            .zones
+            .get_mut(zone_name)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: zone_name.to_string(),
+            })?;
 
         zone.remove_records(name, rtype);
         Ok(())
     }
 
     async fn get_soa(&self, zone_name: &Name) -> Result<SOA> {
-        let zone = self.zones.get(zone_name).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: zone_name.to_string(),
-        })?;
+        let zone = self
+            .zones
+            .get(zone_name)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: zone_name.to_string(),
+            })?;
 
         Ok(zone.soa().clone())
     }
 
     async fn update_serial(&self, zone_name: &Name, new_serial: u32) -> Result<()> {
-        let mut zone = self.zones.get_mut(zone_name).ok_or_else(|| ZoneError::ZoneNotFound {
-            name: zone_name.to_string(),
-        })?;
+        let mut zone = self
+            .zones
+            .get_mut(zone_name)
+            .ok_or_else(|| ZoneError::ZoneNotFound {
+                name: zone_name.to_string(),
+            })?;
 
         zone.update_serial(new_serial);
         Ok(())
@@ -1536,9 +1572,9 @@ impl ZoneFileParser {
                 state.origin = self.make_absolute(name, &state.origin, state)?;
             }
             "$TTL" => {
-                let ttl_str = tokens.get(1).ok_or_else(|| {
-                    ZoneError::parse(state.line_number, "$TTL requires a value")
-                })?;
+                let ttl_str = tokens
+                    .get(1)
+                    .ok_or_else(|| ZoneError::parse(state.line_number, "$TTL requires a value"))?;
                 state.default_ttl = self.parse_ttl_value(ttl_str, state)?;
             }
             "$INCLUDE" => {
@@ -1578,14 +1614,18 @@ impl ZoneFileParser {
         let first = tokens[0];
 
         // Check if first token looks like a name or TTL/class/type
-        if first.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+        if first
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
             || first.eq_ignore_ascii_case("IN")
             || first.eq_ignore_ascii_case("CH")
             || first.eq_ignore_ascii_case("HS")
             || RecordType::try_from(
-                first
-                    .parse::<u16>()
-                    .unwrap_or_else(|_| self.rtype_from_str(first).map(|t| t.to_u16()).unwrap_or(0)),
+                first.parse::<u16>().unwrap_or_else(|_| {
+                    self.rtype_from_str(first).map(|t| t.to_u16()).unwrap_or(0)
+                }),
             )
             .is_ok()
         {
@@ -1610,7 +1650,12 @@ impl ZoneFileParser {
         let first = tokens[0];
 
         // Check if this looks like a TTL (numeric or time format like 1h, 1d)
-        if first.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        if first
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
             // Try to parse as TTL
             if let Ok(ttl) = self.parse_ttl_value_silent(first) {
                 // Make sure it's not a record type number
@@ -1647,19 +1692,27 @@ impl ZoneFileParser {
                     current = 0;
                 }
                 'm' => {
-                    total = total.checked_add(current.checked_mul(60).ok_or(())?).ok_or(())?;
+                    total = total
+                        .checked_add(current.checked_mul(60).ok_or(())?)
+                        .ok_or(())?;
                     current = 0;
                 }
                 'h' => {
-                    total = total.checked_add(current.checked_mul(3600).ok_or(())?).ok_or(())?;
+                    total = total
+                        .checked_add(current.checked_mul(3600).ok_or(())?)
+                        .ok_or(())?;
                     current = 0;
                 }
                 'd' => {
-                    total = total.checked_add(current.checked_mul(86400).ok_or(())?).ok_or(())?;
+                    total = total
+                        .checked_add(current.checked_mul(86400).ok_or(())?)
+                        .ok_or(())?;
                     current = 0;
                 }
                 'w' => {
-                    total = total.checked_add(current.checked_mul(604800).ok_or(())?).ok_or(())?;
+                    total = total
+                        .checked_add(current.checked_mul(604800).ok_or(())?)
+                        .ok_or(())?;
                     current = 0;
                 }
                 _ => return Err(()),
@@ -1695,7 +1748,10 @@ impl ZoneFileParser {
         }
 
         let rtype = self.rtype_from_str(tokens[0]).ok_or_else(|| {
-            ZoneError::parse(state.line_number, format!("unknown record type: {}", tokens[0]))
+            ZoneError::parse(
+                state.line_number,
+                format!("unknown record type: {}", tokens[0]),
+            )
         })?;
 
         Ok((rtype, &tokens[1..]))
@@ -1732,7 +1788,10 @@ impl ZoneFileParser {
             _ => {
                 // Try TYPEnn format
                 if s.to_uppercase().starts_with("TYPE") {
-                    s[4..].parse::<u16>().ok().and_then(|n| RecordType::try_from(n).ok())
+                    s[4..]
+                        .parse::<u16>()
+                        .ok()
+                        .and_then(|n| RecordType::try_from(n).ok())
                 } else {
                     None
                 }
@@ -2013,13 +2072,11 @@ impl ZoneTransfer {
     pub async fn axfr_in(&self, zone_name: &Name, primary: SocketAddr) -> Result<Zone> {
         info!(zone = %zone_name, primary = %primary, "starting inbound AXFR");
 
-        let mut stream = tokio::time::timeout(
-            self.config.connect_timeout,
-            TcpStream::connect(primary),
-        )
-        .await
-        .map_err(|_| ZoneError::Timeout)?
-        .map_err(ZoneError::Io)?;
+        let mut stream =
+            tokio::time::timeout(self.config.connect_timeout, TcpStream::connect(primary))
+                .await
+                .map_err(|_| ZoneError::Timeout)?
+                .map_err(ZoneError::Io)?;
 
         // Send AXFR query
         let query = self.create_axfr_query(zone_name);
@@ -2101,11 +2158,7 @@ impl ZoneTransfer {
 
     /// Performs an inbound IXFR (receiving an incremental zone transfer).
     #[instrument(skip(self, current_zone))]
-    pub async fn ixfr_in(
-        &self,
-        current_zone: &Zone,
-        primary: SocketAddr,
-    ) -> Result<Zone> {
+    pub async fn ixfr_in(&self, current_zone: &Zone, primary: SocketAddr) -> Result<Zone> {
         info!(
             zone = %current_zone.name(),
             current_serial = current_zone.serial(),
@@ -2113,13 +2166,11 @@ impl ZoneTransfer {
             "starting inbound IXFR"
         );
 
-        let mut stream = tokio::time::timeout(
-            self.config.connect_timeout,
-            TcpStream::connect(primary),
-        )
-        .await
-        .map_err(|_| ZoneError::Timeout)?
-        .map_err(ZoneError::Io)?;
+        let mut stream =
+            tokio::time::timeout(self.config.connect_timeout, TcpStream::connect(primary))
+                .await
+                .map_err(|_| ZoneError::Timeout)?
+                .map_err(ZoneError::Io)?;
 
         // Send IXFR query with current SOA in authority section
         let query = self.create_ixfr_query(current_zone);
@@ -2198,7 +2249,10 @@ impl ZoneTransfer {
         let len = wire.len() as u16;
 
         // TCP DNS uses 2-byte length prefix
-        stream.write_all(&len.to_be_bytes()).await.map_err(ZoneError::Io)?;
+        stream
+            .write_all(&len.to_be_bytes())
+            .await
+            .map_err(ZoneError::Io)?;
         stream.write_all(&wire).await.map_err(ZoneError::Io)?;
         stream.flush().await.map_err(ZoneError::Io)?;
 
@@ -2531,7 +2585,9 @@ impl DynamicUpdate {
         for prereq in prereqs {
             match prereq {
                 UpdatePrerequisite::NameInUse(name) => {
-                    if !zone.contains_name(name) || zone.get_node(name).map(|n| n.is_empty()).unwrap_or(true) {
+                    if !zone.contains_name(name)
+                        || zone.get_node(name).map(|n| n.is_empty()).unwrap_or(true)
+                    {
                         return Err(ZoneError::UpdateError {
                             code: ResponseCode::NXRRSet,
                             message: format!("name {} not in use", name),
@@ -2657,7 +2713,9 @@ impl DynamicUpdate {
         // Check CNAME rules
         if rtype == RecordType::CNAME {
             if let Some(node) = zone.get_node(record.name()) {
-                let has_other = node.types().any(|t| t != RecordType::CNAME && t != RecordType::RRSIG);
+                let has_other = node
+                    .types()
+                    .any(|t| t != RecordType::CNAME && t != RecordType::RRSIG);
                 if has_other {
                     return Err(ZoneError::UpdateError {
                         code: ResponseCode::FormErr,

@@ -18,16 +18,7 @@ use std::fmt;
 
 /// Extended DNS Error codes (RFC 8914).
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    IntoPrimitive,
-    TryFromPrimitive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive, Serialize, Deserialize,
 )]
 #[repr(u16)]
 pub enum EdeCode {

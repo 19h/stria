@@ -2,11 +2,11 @@
 
 use super::handler::{QueryContext, QueryHandler};
 use super::{Protocol, Result, ServerError};
-use stria_proto::Message;
 use bytes::{Bytes, BytesMut};
 use socket2::{Domain, Socket, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use stria_proto::Message;
 use tokio::net::UdpSocket;
 use tracing::{debug, error, info, trace, warn};
 

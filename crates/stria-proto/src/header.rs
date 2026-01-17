@@ -284,8 +284,9 @@ impl Header {
 
         // Extract opcode (bits 11-14)
         let opcode_value = ((flags_raw >> 11) & 0x0F) as u8;
-        let opcode = OpCode::from_u8(opcode_value)
-            .ok_or(Error::InvalidOpCode { value: opcode_value })?;
+        let opcode = OpCode::from_u8(opcode_value).ok_or(Error::InvalidOpCode {
+            value: opcode_value,
+        })?;
 
         // Extract rcode (bits 0-3)
         let rcode_value = (flags_raw & 0x0F) as u16;

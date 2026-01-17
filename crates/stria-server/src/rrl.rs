@@ -125,13 +125,13 @@ impl RateLimiter {
         // Calculate threshold based on window configuration
         // At minimum, allow responses_per_second requests even at the start of a window
         let base_threshold = self.config.responses_per_second;
-        
+
         // For longer windows, scale up the threshold proportionally to elapsed time
         let window_fraction = window_elapsed.as_secs_f64() / self.config.window.as_secs_f64();
-        let scaled_threshold = (self.config.responses_per_second as f64 
-            * self.config.window.as_secs_f64() 
+        let scaled_threshold = (self.config.responses_per_second as f64
+            * self.config.window.as_secs_f64()
             * window_fraction) as u32;
-        
+
         // Use the larger of base threshold or scaled threshold
         let threshold = base_threshold.max(scaled_threshold);
 
@@ -179,9 +179,8 @@ impl RateLimiter {
     /// Cleans up expired entries.
     pub fn cleanup(&self) {
         let now = Instant::now();
-        self.table.retain(|_, entry| {
-            now.duration_since(entry.window_start) < self.config.window * 2
-        });
+        self.table
+            .retain(|_, entry| now.duration_since(entry.window_start) < self.config.window * 2);
     }
 
     /// Returns the number of entries in the table.

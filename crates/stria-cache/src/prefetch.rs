@@ -1,9 +1,9 @@
 //! Cache prefetch implementation.
 
 use super::CacheKey;
+use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::sync::Arc;
-use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
 /// Prefetch request.
@@ -47,7 +47,10 @@ impl PrefetchQueue {
             in_flight.insert(key.clone());
         }
 
-        let request = PrefetchRequest { key: key.clone(), priority };
+        let request = PrefetchRequest {
+            key: key.clone(),
+            priority,
+        };
 
         if self.sender.send(request).await.is_err() {
             // Channel closed, remove from in_flight

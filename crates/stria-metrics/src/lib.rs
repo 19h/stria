@@ -73,7 +73,8 @@ impl DnsMetrics {
 
     /// Records query latency.
     pub fn record_latency(&self, protocol: &str, duration: Duration) {
-        histogram!("dns_query_duration_seconds", "protocol" => protocol.to_string()).record(duration.as_secs_f64());
+        histogram!("dns_query_duration_seconds", "protocol" => protocol.to_string())
+            .record(duration.as_secs_f64());
     }
 
     /// Records a query error.

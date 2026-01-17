@@ -1,10 +1,10 @@
 //! Query handler interface.
 
 use async_trait::async_trait;
-use stria_proto::Message;
 use bytes::Bytes;
 use std::net::SocketAddr;
 use std::time::Instant;
+use stria_proto::Message;
 
 use super::Protocol;
 

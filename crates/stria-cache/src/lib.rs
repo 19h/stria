@@ -17,7 +17,6 @@
 //! - Cache poisoning countermeasures
 //! - Negative caching with proper TTL handling
 
-use stria_proto::{Message, Name, Question, RecordType, ResourceRecord};
 use dashmap::DashMap;
 use moka::future::Cache as MokaCache;
 use parking_lot::RwLock;
@@ -25,6 +24,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use stria_proto::{Message, Name, Question, RecordType, ResourceRecord};
 
 pub mod entry;
 pub mod key;
@@ -117,8 +117,8 @@ impl DnsCache {
             self.stats.record_hit();
 
             // Check if prefetch is needed
-            let should_prefetch = self.config.prefetch
-                && entry.should_prefetch(now, self.config.prefetch_threshold);
+            let should_prefetch =
+                self.config.prefetch && entry.should_prefetch(now, self.config.prefetch_threshold);
 
             Some(CacheLookupResult {
                 entry,

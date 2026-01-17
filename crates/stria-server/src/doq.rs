@@ -37,7 +37,6 @@
 
 use crate::handler::{QueryContext, QueryHandler};
 use crate::{Protocol, Result, ServerError};
-use stria_proto::Message;
 use bytes::Bytes;
 use quinn::{
     Connection, Endpoint, RecvStream, SendStream, ServerConfig as QuinnServerConfig, VarInt,
@@ -48,9 +47,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use stria_proto::Message;
 use tracing::{debug, info, trace};
 
 /// ALPN protocol identifier for DNS over QUIC per RFC 9250.
@@ -108,9 +108,8 @@ impl DoqServer {
         enable_0rtt: bool,
     ) -> Result<QuinnServerConfig> {
         // Load certificate chain
-        let cert_file = File::open(cert_path.as_ref()).map_err(|e| {
-            ServerError::Tls(format!("Failed to open certificate file: {}", e))
-        })?;
+        let cert_file = File::open(cert_path.as_ref())
+            .map_err(|e| ServerError::Tls(format!("Failed to open certificate file: {}", e)))?;
         let mut cert_reader = BufReader::new(cert_file);
         let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_reader)
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -121,9 +120,8 @@ impl DoqServer {
         }
 
         // Load private key
-        let key_file = File::open(key_path.as_ref()).map_err(|e| {
-            ServerError::Tls(format!("Failed to open key file: {}", e))
-        })?;
+        let key_file = File::open(key_path.as_ref())
+            .map_err(|e| ServerError::Tls(format!("Failed to open key file: {}", e)))?;
         let mut key_reader = BufReader::new(key_file);
         let key = rustls_pemfile::private_key(&mut key_reader)
             .map_err(|e| ServerError::Tls(format!("Failed to parse private key: {}", e)))?
@@ -144,21 +142,18 @@ impl DoqServer {
         // Build quinn server config using QUIC-specific rustls wrapper
         let quic_crypto_config = QuicServerConfig::try_from(crypto_config)
             .map_err(|e| ServerError::Tls(format!("Failed to create QUIC crypto config: {}", e)))?;
-        let mut server_config =
-            QuinnServerConfig::with_crypto(Arc::new(quic_crypto_config));
+        let mut server_config = QuinnServerConfig::with_crypto(Arc::new(quic_crypto_config));
 
         // Configure transport parameters
         let mut transport_config = quinn::TransportConfig::default();
-        
+
         // Set idle timeout (default 30 seconds)
-        transport_config.max_idle_timeout(Some(
-            Duration::from_secs(30).try_into().unwrap(),
-        ));
-        
+        transport_config.max_idle_timeout(Some(Duration::from_secs(30).try_into().unwrap()));
+
         // Set max concurrent streams
         transport_config.max_concurrent_bidi_streams(VarInt::from_u32(100));
         transport_config.max_concurrent_uni_streams(VarInt::from_u32(0)); // DoQ uses bidi only
-        
+
         // Enable 0-RTT
         if enable_0rtt {
             // Server needs to send max_early_data_size via transport config
@@ -187,8 +182,12 @@ impl DoqServer {
         handler: Arc<dyn QueryHandler>,
     ) -> Result<Self> {
         // Create the QUIC endpoint
-        let endpoint = Endpoint::server(server_config, addr)
-            .map_err(|e| ServerError::Io(std::io::Error::other(format!("Failed to bind QUIC endpoint: {}", e))))?;
+        let endpoint = Endpoint::server(server_config, addr).map_err(|e| {
+            ServerError::Io(std::io::Error::other(format!(
+                "Failed to bind QUIC endpoint: {}",
+                e
+            )))
+        })?;
 
         let local_addr = endpoint.local_addr()?;
 
@@ -356,7 +355,10 @@ async fn handle_stream(
 
     // Finish the stream
     send.finish().map_err(|e| {
-        ServerError::Io(std::io::Error::other(format!("Failed to finish stream: {}", e)))
+        ServerError::Io(std::io::Error::other(format!(
+            "Failed to finish stream: {}",
+            e
+        )))
     })?;
 
     trace!(
@@ -377,9 +379,12 @@ async fn handle_stream(
 async fn read_dns_message(recv: &mut RecvStream) -> Result<Bytes> {
     // Read 2-byte length prefix
     let mut len_buf = [0u8; 2];
-    recv.read_exact(&mut len_buf)
-        .await
-        .map_err(|e| ServerError::Io(std::io::Error::other(format!("Failed to read length: {}", e))))?;
+    recv.read_exact(&mut len_buf).await.map_err(|e| {
+        ServerError::Io(std::io::Error::other(format!(
+            "Failed to read length: {}",
+            e
+        )))
+    })?;
 
     let len = u16::from_be_bytes(len_buf) as usize;
 
@@ -396,9 +401,12 @@ async fn read_dns_message(recv: &mut RecvStream) -> Result<Bytes> {
 
     // Read message body
     let mut buf = vec![0u8; len];
-    recv.read_exact(&mut buf)
-        .await
-        .map_err(|e| ServerError::Io(std::io::Error::other(format!("Failed to read message: {}", e))))?;
+    recv.read_exact(&mut buf).await.map_err(|e| {
+        ServerError::Io(std::io::Error::other(format!(
+            "Failed to read message: {}",
+            e
+        )))
+    })?;
 
     Ok(Bytes::from(buf))
 }
@@ -409,14 +417,20 @@ async fn read_dns_message(recv: &mut RecvStream) -> Result<Bytes> {
 async fn write_dns_message(send: &mut SendStream, data: &[u8]) -> Result<()> {
     // Write 2-byte length prefix
     let len = data.len() as u16;
-    send.write_all(&len.to_be_bytes())
-        .await
-        .map_err(|e| ServerError::Io(std::io::Error::other(format!("Failed to write length: {}", e))))?;
+    send.write_all(&len.to_be_bytes()).await.map_err(|e| {
+        ServerError::Io(std::io::Error::other(format!(
+            "Failed to write length: {}",
+            e
+        )))
+    })?;
 
     // Write message body
-    send.write_all(data)
-        .await
-        .map_err(|e| ServerError::Io(std::io::Error::other(format!("Failed to write message: {}", e))))?;
+    send.write_all(data).await.map_err(|e| {
+        ServerError::Io(std::io::Error::other(format!(
+            "Failed to write message: {}",
+            e
+        )))
+    })?;
 
     Ok(())
 }
@@ -461,7 +475,7 @@ mod tests {
 
     // Generate a self-signed certificate for testing
     fn generate_test_cert() -> (NamedTempFile, NamedTempFile) {
-        use rcgen::{generate_simple_self_signed, CertifiedKey};
+        use rcgen::{CertifiedKey, generate_simple_self_signed};
 
         let subject_alt_names = vec!["localhost".to_string(), "127.0.0.1".to_string()];
         let CertifiedKey { cert, key_pair } =

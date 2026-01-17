@@ -750,14 +750,14 @@ impl Default for ServerConfig {
 pub fn interpolate_env(s: &str) -> String {
     let mut result = s.to_string();
     let re = regex::Regex::new(r"\$\{([^}:]+)(?::-([^}]*))?\}").unwrap();
-    
+
     for cap in re.captures_iter(s) {
         let var_name = &cap[1];
         let default = cap.get(2).map(|m| m.as_str()).unwrap_or("");
         let value = std::env::var(var_name).unwrap_or_else(|_| default.to_string());
         result = result.replace(&cap[0], &value);
     }
-    
+
     result
 }
 
@@ -882,7 +882,7 @@ cache:
 
         let result = interpolate_env("upstream: ${NONEXISTENT:-8.8.8.8}");
         assert_eq!(result, "upstream: 8.8.8.8");
-        
+
         unsafe {
             std::env::remove_var("TEST_DNS");
         }

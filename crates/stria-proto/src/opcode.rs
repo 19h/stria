@@ -11,16 +11,7 @@ use serde::{Deserialize, Serialize};
 /// The OpCode field in the DNS header specifies the kind of query.
 /// See RFC 1035 Section 4.1.1 and RFC 6895 for the complete registry.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    IntoPrimitive,
-    TryFromPrimitive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive, Serialize, Deserialize,
 )]
 #[repr(u8)]
 pub enum OpCode {
@@ -76,7 +67,10 @@ impl OpCode {
     /// Returns true if this opcode expects a response.
     #[inline]
     pub const fn expects_response(self) -> bool {
-        matches!(self, Self::Query | Self::Status | Self::Notify | Self::Update)
+        matches!(
+            self,
+            Self::Query | Self::Status | Self::Notify | Self::Update
+        )
     }
 
     /// Returns the human-readable name of the opcode.

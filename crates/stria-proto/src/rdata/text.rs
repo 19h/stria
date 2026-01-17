@@ -47,7 +47,10 @@ impl TXT {
     /// This is the semantic value for protocols like SPF that span multiple
     /// character-strings.
     pub fn data(&self) -> Vec<u8> {
-        self.strings.iter().flat_map(|s| s.iter().copied()).collect()
+        self.strings
+            .iter()
+            .flat_map(|s| s.iter().copied())
+            .collect()
     }
 
     /// Returns the data as a UTF-8 string if valid.
@@ -103,9 +106,7 @@ impl TXT {
 
     /// Returns true if this appears to be a DKIM record.
     pub fn is_dkim(&self) -> bool {
-        self.text()
-            .map(|t| t.contains("v=DKIM1"))
-            .unwrap_or(false)
+        self.text().map(|t| t.contains("v=DKIM1")).unwrap_or(false)
     }
 
     /// Returns true if this appears to be a DMARC record.

@@ -20,11 +20,11 @@
 //! - Connection tracking and rate limiting
 
 use async_trait::async_trait;
-use stria_proto::Message;
 use bytes::Bytes;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use stria_proto::Message;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 
@@ -60,13 +60,12 @@ pub use dot::DotServer;
 pub use doh::DohServer;
 
 #[cfg(feature = "doq")]
-pub use doq::{DoqServer, DoqErrorCode};
+pub use doq::{DoqErrorCode, DoqServer};
 
 #[cfg(feature = "doh")]
 pub use control::{
-    ControlServer, ControlState, 
-    CacheProvider, FilterProvider, FilterTestResult,
-    ListenerStatus, BlocklistInfo, QueryLogEntry,
+    BlocklistInfo, CacheProvider, ControlServer, ControlState, FilterProvider, FilterTestResult,
+    ListenerStatus, QueryLogEntry,
 };
 
 /// Server error types.
@@ -387,17 +386,12 @@ impl DnsServer {
         // Start DoT servers
         #[cfg(feature = "dot")]
         if let Some(dot_config) = &self.config.dot {
-            let tls_config = dot::DotServer::load_tls_config(
-                &dot_config.cert_path,
-                &dot_config.key_path,
-            )?;
-            
+            let tls_config =
+                dot::DotServer::load_tls_config(&dot_config.cert_path, &dot_config.key_path)?;
+
             for addr in &dot_config.listen {
-                let server = dot::DotServer::bind(
-                    *addr,
-                    tls_config.clone(),
-                    self.handler.clone(),
-                ).await?;
+                let server =
+                    dot::DotServer::bind(*addr, tls_config.clone(), self.handler.clone()).await?;
                 let mut shutdown_rx = self.shutdown_tx.subscribe();
                 handles.push(tokio::spawn(async move {
                     tokio::select! {
@@ -411,18 +405,17 @@ impl DnsServer {
         // Start DoH servers
         #[cfg(feature = "doh")]
         if let Some(doh_config) = &self.config.doh {
-            let tls_config = doh::DohServer::load_tls_config(
-                &doh_config.cert_path,
-                &doh_config.key_path,
-            )?;
-            
+            let tls_config =
+                doh::DohServer::load_tls_config(&doh_config.cert_path, &doh_config.key_path)?;
+
             for addr in &doh_config.listen {
                 let server = doh::DohServer::bind_with_path(
                     *addr,
                     tls_config.clone(),
                     self.handler.clone(),
                     &doh_config.path,
-                ).await?;
+                )
+                .await?;
                 let mut shutdown_rx = self.shutdown_tx.subscribe();
                 handles.push(tokio::spawn(async move {
                     tokio::select! {
@@ -436,17 +429,12 @@ impl DnsServer {
         // Start DoQ servers
         #[cfg(feature = "doq")]
         if let Some(doq_config) = &self.config.doq {
-            let quinn_config = doq::DoqServer::build_server_config(
-                &doq_config.cert_path,
-                &doq_config.key_path,
-            )?;
-            
+            let quinn_config =
+                doq::DoqServer::build_server_config(&doq_config.cert_path, &doq_config.key_path)?;
+
             for addr in &doq_config.listen {
-                let server = doq::DoqServer::bind(
-                    *addr,
-                    quinn_config.clone(),
-                    self.handler.clone(),
-                ).await?;
+                let server =
+                    doq::DoqServer::bind(*addr, quinn_config.clone(), self.handler.clone()).await?;
                 let mut shutdown_rx = self.shutdown_tx.subscribe();
                 handles.push(tokio::spawn(async move {
                     tokio::select! {
@@ -459,7 +447,9 @@ impl DnsServer {
 
         // Wait for all servers
         for handle in handles {
-            handle.await.map_err(|e| ServerError::Io(std::io::Error::other(e)))??;
+            handle
+                .await
+                .map_err(|e| ServerError::Io(std::io::Error::other(e)))??;
         }
 
         Ok(())

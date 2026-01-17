@@ -13,8 +13,8 @@
 //! - Automatic failover and load balancing
 
 use async_trait::async_trait;
-use stria_proto::{Message, Name, Question};
 use std::time::Duration;
+use stria_proto::{Message, Name, Question};
 use thiserror::Error;
 
 pub mod forward;
@@ -24,7 +24,7 @@ pub mod upstream;
 
 pub use forward::Forwarder;
 pub use pool::ConnectionPool;
-pub use recursive::{RecursiveConfig, RecursiveResolver, ResolverMetrics, RootHints, ROOT_HINTS};
+pub use recursive::{ROOT_HINTS, RecursiveConfig, RecursiveResolver, ResolverMetrics, RootHints};
 pub use upstream::{Upstream, UpstreamConfig, UpstreamProtocol};
 
 /// Resolver error.

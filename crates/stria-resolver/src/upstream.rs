@@ -1,11 +1,11 @@
 //! Upstream server management.
 
 use super::Result;
-use stria_proto::Message;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+use stria_proto::Message;
 use tokio::sync::RwLock;
 
 /// Upstream protocol.

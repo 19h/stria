@@ -11,8 +11,8 @@
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -21,14 +21,14 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::time::timeout;
 
+use stria_proto::Message;
 use stria_proto::class::{Class, RecordClass};
 use stria_proto::name::Name;
 use stria_proto::question::Question;
 use stria_proto::rcode::ResponseCode;
-use stria_proto::rdata::{RData, A, AAAA, CNAME};
+use stria_proto::rdata::{A, AAAA, CNAME, RData};
 use stria_proto::record::ResourceRecord;
 use stria_proto::rtype::{RecordType, Type};
-use stria_proto::Message;
 
 use stria_server::handler::{QueryContext, QueryHandler};
 use stria_server::{TcpServer, UdpServer};
@@ -323,10 +323,7 @@ async fn test_udp_aaaa_query() {
 
     assert_eq!(response.rcode(), ResponseCode::NoError);
     assert_eq!(response.answers().len(), 1);
-    assert_eq!(
-        response.answers()[0].rtype(),
-        Type::Known(RecordType::AAAA)
-    );
+    assert_eq!(response.answers()[0].rtype(), Type::Known(RecordType::AAAA));
 
     server_handle.abort();
 }
@@ -484,11 +481,7 @@ async fn test_tcp_multiple_queries_same_connection() {
 #[tokio::test]
 async fn test_tcp_concurrent_connections() {
     let handler = Arc::new(TestHandler::new());
-    handler.add_a_record(
-        "concurrent-tcp.example.com",
-        Ipv4Addr::new(8, 8, 8, 8),
-        300,
-    );
+    handler.add_a_record("concurrent-tcp.example.com", Ipv4Addr::new(8, 8, 8, 8), 300);
 
     let server = TcpServer::bind("127.0.0.1:0".parse().unwrap(), handler.clone())
         .await
@@ -618,10 +611,7 @@ async fn test_response_echoes_question() {
         response.questions()[0].qname.to_string(),
         "echo.example.com."
     );
-    assert_eq!(
-        response.questions()[0].qtype,
-        Type::Known(RecordType::A)
-    );
+    assert_eq!(response.questions()[0].qtype, Type::Known(RecordType::A));
 
     server_handle.abort();
 }
@@ -735,9 +725,13 @@ async fn test_mixed_udp_tcp_concurrent() {
     for i in 0..50 {
         let query = make_query("mixed.example.com", RecordType::A);
         if i % 2 == 0 {
-            handles.push(tokio::spawn(async move { udp_query(udp_addr, &query).await }));
+            handles.push(tokio::spawn(
+                async move { udp_query(udp_addr, &query).await },
+            ));
         } else {
-            handles.push(tokio::spawn(async move { tcp_query(tcp_addr, &query).await }));
+            handles.push(tokio::spawn(
+                async move { tcp_query(tcp_addr, &query).await },
+            ));
         }
     }
 
@@ -856,10 +850,7 @@ async fn test_various_record_types() {
         .await
         .unwrap();
     assert_eq!(response.rcode(), ResponseCode::NoError);
-    assert_eq!(
-        response.answers()[0].rtype(),
-        Type::Known(RecordType::AAAA)
-    );
+    assert_eq!(response.answers()[0].rtype(), Type::Known(RecordType::AAAA));
 
     // Test CNAME record
     let response = udp_query(addr, &make_query("cname.example.com", RecordType::CNAME))
@@ -1195,8 +1186,10 @@ async fn test_filter_stats() {
 
 #[tokio::test]
 async fn test_forwarder_basic() {
-    use stria_resolver::{Forwarder, ResolverConfig, Resolver, Upstream, UpstreamConfig, UpstreamProtocol};
     use std::net::SocketAddr;
+    use stria_resolver::{
+        Forwarder, Resolver, ResolverConfig, Upstream, UpstreamConfig, UpstreamProtocol,
+    };
 
     // Skip if no network (CI environment)
     if std::env::var("CI").is_ok() {
@@ -1223,7 +1216,7 @@ async fn test_forwarder_basic() {
     );
 
     let result = forwarder.resolve(&question).await;
-    
+
     // Should succeed (assuming network is available)
     if let Ok(response) = result {
         assert_eq!(response.rcode(), ResponseCode::NoError);

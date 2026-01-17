@@ -459,8 +459,7 @@ impl RRSIG {
         let type_covered = u16::from_be_bytes([message[offset], message[offset + 1]]);
         let algorithm = message[offset + 2];
         let labels = message[offset + 3];
-        let original_ttl =
-            u32::from_be_bytes(message[offset + 4..offset + 8].try_into().unwrap());
+        let original_ttl = u32::from_be_bytes(message[offset + 4..offset + 8].try_into().unwrap());
         let expiration = u32::from_be_bytes(message[offset + 8..offset + 12].try_into().unwrap());
         let inception = u32::from_be_bytes(message[offset + 12..offset + 16].try_into().unwrap());
         let key_tag = u16::from_be_bytes([message[offset + 16], message[offset + 17]]);
@@ -930,9 +929,9 @@ mod tests {
         // Type 6: byte 0, bit 1 (0x02)
         // Type 15: byte 1, bit 0 (0x01)
         let bitmap = vec![
-            0u8, 2, // Window 0, 2 bytes
-            0x62,   // Types 1, 2, 6
-            0x01,   // Type 15
+            0u8, 2,    // Window 0, 2 bytes
+            0x62, // Types 1, 2, 6
+            0x01, // Type 15
         ];
 
         let nsec = NSEC::new(Name::from_str("next.example.com").unwrap(), bitmap);

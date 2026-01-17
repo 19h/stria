@@ -169,14 +169,26 @@ impl SOA {
         }
 
         let serial = u32::from_be_bytes(message[nums_offset..nums_offset + 4].try_into().unwrap());
-        let refresh =
-            u32::from_be_bytes(message[nums_offset + 4..nums_offset + 8].try_into().unwrap());
-        let retry =
-            u32::from_be_bytes(message[nums_offset + 8..nums_offset + 12].try_into().unwrap());
-        let expire =
-            u32::from_be_bytes(message[nums_offset + 12..nums_offset + 16].try_into().unwrap());
-        let minimum =
-            u32::from_be_bytes(message[nums_offset + 16..nums_offset + 20].try_into().unwrap());
+        let refresh = u32::from_be_bytes(
+            message[nums_offset + 4..nums_offset + 8]
+                .try_into()
+                .unwrap(),
+        );
+        let retry = u32::from_be_bytes(
+            message[nums_offset + 8..nums_offset + 12]
+                .try_into()
+                .unwrap(),
+        );
+        let expire = u32::from_be_bytes(
+            message[nums_offset + 12..nums_offset + 16]
+                .try_into()
+                .unwrap(),
+        );
+        let minimum = u32::from_be_bytes(
+            message[nums_offset + 16..nums_offset + 20]
+                .try_into()
+                .unwrap(),
+        );
 
         Ok(Self {
             mname,
@@ -228,7 +240,13 @@ impl fmt::Display for SOA {
         write!(
             f,
             "{} {} {} {} {} {} {}",
-            self.mname, self.rname, self.serial, self.refresh, self.retry, self.expire, self.minimum
+            self.mname,
+            self.rname,
+            self.serial,
+            self.refresh,
+            self.retry,
+            self.expire,
+            self.minimum
         )
     }
 }

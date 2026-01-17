@@ -2,13 +2,13 @@
 
 use super::handler::{QueryContext, QueryHandler};
 use super::{Protocol, Result, ServerError};
-use stria_proto::Message;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use socket2::{Domain, Socket, Type};
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use stria_proto::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
@@ -86,7 +86,9 @@ impl TcpServer {
                     let conn_id = CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
 
                     tokio::spawn(async move {
-                        if let Err(e) = handle_connection(stream, peer, handler, idle_timeout, conn_id).await {
+                        if let Err(e) =
+                            handle_connection(stream, peer, handler, idle_timeout, conn_id).await
+                        {
                             debug!(error = %e, client = %peer, "TCP connection error");
                         }
                     });

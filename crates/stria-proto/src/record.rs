@@ -234,13 +234,21 @@ impl ResourceRecord {
     /// Returns true if this is a DNSSEC-related record.
     #[inline]
     pub fn is_dnssec(&self) -> bool {
-        self.rtype.as_known().map(|t| t.is_dnssec()).unwrap_or(false)
+        self.rtype
+            .as_known()
+            .map(|t| t.is_dnssec())
+            .unwrap_or(false)
     }
 
     /// Returns true if this record should be cached.
     #[inline]
     pub fn is_cacheable(&self) -> bool {
-        self.ttl > 0 && self.rtype.as_known().map(|t| t.is_cacheable()).unwrap_or(true)
+        self.ttl > 0
+            && self
+                .rtype
+                .as_known()
+                .map(|t| t.is_cacheable())
+                .unwrap_or(true)
     }
 
     /// Parses a resource record from wire format.
@@ -257,11 +265,7 @@ impl ResourceRecord {
 
         let rtype_value = u16::from_be_bytes([data[fixed_start], data[fixed_start + 1]]);
         let rclass_value = u16::from_be_bytes([data[fixed_start + 2], data[fixed_start + 3]]);
-        let ttl = u32::from_be_bytes(
-            data[fixed_start + 4..fixed_start + 8]
-                .try_into()
-                .unwrap(),
-        );
+        let ttl = u32::from_be_bytes(data[fixed_start + 4..fixed_start + 8].try_into().unwrap());
         let rdlength = u16::from_be_bytes([data[fixed_start + 8], data[fixed_start + 9]]);
 
         let rdata_start = fixed_start + 10;

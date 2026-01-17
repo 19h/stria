@@ -152,9 +152,21 @@ impl EdnsOption {
             Self::Nsid(data) => data.len(),
             Self::ClientSubnet { address, .. } => 4 + address.len(),
             Self::Cookie { server, .. } => 8 + server.as_ref().map(|s| s.len()).unwrap_or(0),
-            Self::TcpKeepalive(timeout) => if timeout.is_some() { 2 } else { 0 },
+            Self::TcpKeepalive(timeout) => {
+                if timeout.is_some() {
+                    2
+                } else {
+                    0
+                }
+            }
             Self::Padding(data) => data.len(),
-            Self::Expire(value) => if value.is_some() { 4 } else { 0 },
+            Self::Expire(value) => {
+                if value.is_some() {
+                    4
+                } else {
+                    0
+                }
+            }
             Self::ExtendedDnsError { text, .. } => 2 + text.len(),
             Self::KeyTag(tags) => tags.len() * 2,
             Self::Unknown { data, .. } => data.len(),
@@ -332,7 +344,11 @@ impl fmt::Display for EdnsOption {
                     }
                     _ => format!("{:?}", address),
                 };
-                write!(f, "CLIENT-SUBNET: {}/{}/{}", addr_str, source_prefix, scope_prefix)
+                write!(
+                    f,
+                    "CLIENT-SUBNET: {}/{}/{}",
+                    addr_str, source_prefix, scope_prefix
+                )
             }
             Self::Cookie { client, server } => {
                 write!(
@@ -544,7 +560,8 @@ impl Edns {
 
         // TTL = extended RCODE + version + flags
         let flags = if self.dnssec_ok { 0x8000u16 } else { 0 };
-        let ttl = u32::from(self.extended_rcode) << 24 | u32::from(self.version) << 16 | u32::from(flags);
+        let ttl =
+            u32::from(self.extended_rcode) << 24 | u32::from(self.version) << 16 | u32::from(flags);
         buf.extend_from_slice(&ttl.to_be_bytes());
 
         // RDLENGTH

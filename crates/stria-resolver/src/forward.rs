@@ -3,10 +3,10 @@
 use super::upstream::{Upstream, UpstreamGroup};
 use super::{Resolver, ResolverConfig, ResolverError, Result};
 use async_trait::async_trait;
-use stria_proto::{Message, Question};
 use bytes::BytesMut;
 use std::sync::Arc;
 use std::time::Instant;
+use stria_proto::{Message, Question};
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 use tracing::{debug, trace};
@@ -31,12 +31,8 @@ impl Forwarder {
         let start = Instant::now();
 
         let result = match upstream.protocol() {
-            super::upstream::UpstreamProtocol::Udp => {
-                self.query_udp(upstream, query).await
-            }
-            super::upstream::UpstreamProtocol::Tcp => {
-                self.query_tcp(upstream, query).await
-            }
+            super::upstream::UpstreamProtocol::Udp => self.query_udp(upstream, query).await,
+            super::upstream::UpstreamProtocol::Tcp => self.query_tcp(upstream, query).await,
             _ => {
                 // DoT/DoH/DoQ would require connection pools
                 Err(ResolverError::Protocol("Protocol not implemented".into()))
@@ -63,8 +59,8 @@ impl Forwarder {
             .await
             .map_err(|_| ResolverError::Timeout)??;
 
-        let response = Message::parse(&buf[..len])
-            .map_err(|e| ResolverError::Protocol(e.to_string()))?;
+        let response =
+            Message::parse(&buf[..len]).map_err(|e| ResolverError::Protocol(e.to_string()))?;
 
         // Verify response matches query
         if response.id() != query.id() {
@@ -109,8 +105,8 @@ impl Forwarder {
             .await
             .map_err(|_| ResolverError::Timeout)??;
 
-        let response = Message::parse(&resp_buf)
-            .map_err(|e| ResolverError::Protocol(e.to_string()))?;
+        let response =
+            Message::parse(&resp_buf).map_err(|e| ResolverError::Protocol(e.to_string()))?;
 
         if response.id() != query.id() {
             return Err(ResolverError::Protocol("Response ID mismatch".into()));

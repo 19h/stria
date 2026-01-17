@@ -48,8 +48,8 @@ use std::collections::VecDeque;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::net::UnixListener;
 use tokio::sync::broadcast;
@@ -456,9 +456,8 @@ impl CustomRulesFile {
         }
 
         let content = fs::read_to_string(path)?;
-        let rules: Self = serde_json::from_str(&content).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })?;
+        let rules: Self = serde_json::from_str(&content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
 
         Ok(rules)
     }
@@ -472,9 +471,8 @@ impl CustomRulesFile {
 
         // Write to a temp file first, then rename for atomicity
         let temp_path = path.with_extension("tmp");
-        let content = serde_json::to_string_pretty(self).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-        })?;
+        let content = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
 
         let mut file = fs::File::create(&temp_path)?;
         file.write_all(content.as_bytes())?;
@@ -699,31 +697,31 @@ pub struct ControlState {
 pub trait CacheProvider {
     /// Returns the number of cache entries.
     fn len(&self) -> usize;
-    
+
     /// Returns true if the cache is empty.
     fn is_empty(&self) -> bool;
-    
+
     /// Clears all cache entries.
     fn clear(&self);
-    
+
     /// Returns cache hit count.
     fn hits(&self) -> u64;
-    
+
     /// Returns cache miss count.
     fn misses(&self) -> u64;
-    
+
     /// Returns cache hit rate.
     fn hit_rate(&self) -> f64;
-    
+
     /// Returns stale hit count.
     fn stale_hits(&self) -> u64;
-    
+
     /// Returns prefetch count.
     fn prefetches(&self) -> u64;
-    
+
     /// Returns cache capacity.
     fn capacity(&self) -> usize;
-    
+
     /// Returns estimated memory usage.
     fn memory_bytes(&self) -> usize;
 }
@@ -732,22 +730,22 @@ pub trait CacheProvider {
 pub trait FilterProvider {
     /// Returns the total number of rules.
     fn rule_count(&self) -> usize;
-    
+
     /// Returns the number of blocklists.
     fn blocklist_count(&self) -> usize;
-    
+
     /// Returns queries blocked count.
     fn queries_blocked(&self) -> u64;
-    
+
     /// Returns queries allowed count (by allowlist).
     fn queries_allowed(&self) -> u64;
-    
+
     /// Returns the block rate as a percentage.
     fn block_rate(&self) -> f64;
-    
+
     /// Checks if a domain would be blocked.
     fn test_domain(&self, domain: &str) -> FilterTestResult;
-    
+
     /// Clears the filter cache.
     fn clear_cache(&self);
 
@@ -777,10 +775,7 @@ pub struct FilterTestResult {
 
 impl ControlState {
     /// Creates a new control state.
-    pub fn new(
-        stats: Arc<ServerStats>,
-        shutdown_tx: broadcast::Sender<()>,
-    ) -> Self {
+    pub fn new(stats: Arc<ServerStats>, shutdown_tx: broadcast::Sender<()>) -> Self {
         Self {
             start_time: Instant::now(),
             status: RwLock::new(ServerStatus::Running),
@@ -835,7 +830,8 @@ impl ControlState {
         // Update state from loaded rules
         *self.custom_blocks.write() = rules_file.block_rules;
         *self.custom_allows.write() = rules_file.allow_rules;
-        self.rule_id_counter.store(rules_file.next_id, Ordering::Relaxed);
+        self.rule_id_counter
+            .store(rules_file.next_id, Ordering::Relaxed);
 
         let block_count = self.custom_blocks.read().len();
         let allow_count = self.custom_allows.read().len();
@@ -959,7 +955,10 @@ impl ControlState {
 
     /// Generates a new unique rule ID.
     fn next_rule_id(&self) -> String {
-        format!("rule_{}", self.rule_id_counter.fetch_add(1, Ordering::Relaxed))
+        format!(
+            "rule_{}",
+            self.rule_id_counter.fetch_add(1, Ordering::Relaxed)
+        )
     }
 
     /// Generates a shutdown token valid for a limited time.
@@ -1058,10 +1057,7 @@ impl ControlServer {
                         let io = TokioIo::new(stream);
                         let service = TowerToHyperService::new(router);
 
-                        if let Err(e) = http1::Builder::new()
-                            .serve_connection(io, service)
-                            .await
-                        {
+                        if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
                             debug!(error = %e, "Control connection error");
                         }
                     });
@@ -1117,9 +1113,7 @@ impl ControlServer {
 // ============================================================================
 
 /// GET /status - Returns server status.
-async fn status_handler(
-    State(state): State<Arc<ControlState>>,
-) -> Json<StatusResponse> {
+async fn status_handler(State(state): State<Arc<ControlState>>) -> Json<StatusResponse> {
     let uptime = state.uptime();
     let status = *state.status.read();
     let listeners = state.listeners.read().clone();
@@ -1140,9 +1134,7 @@ async fn status_handler(
 }
 
 /// GET /stats - Returns combined statistics.
-async fn stats_handler(
-    State(state): State<Arc<ControlState>>,
-) -> Json<StatsResponse> {
+async fn stats_handler(State(state): State<Arc<ControlState>>) -> Json<StatsResponse> {
     let stats = &state.stats;
 
     Json(StatsResponse {
@@ -1153,30 +1145,22 @@ async fn stats_handler(
 }
 
 /// GET /stats/queries - Returns query statistics only.
-async fn stats_queries_handler(
-    State(state): State<Arc<ControlState>>,
-) -> Json<QueryStats> {
+async fn stats_queries_handler(State(state): State<Arc<ControlState>>) -> Json<QueryStats> {
     Json(build_query_stats(&state.stats))
 }
 
 /// GET /stats/cache - Returns cache statistics only.
-async fn stats_cache_handler(
-    State(state): State<Arc<ControlState>>,
-) -> Json<CacheStats> {
+async fn stats_cache_handler(State(state): State<Arc<ControlState>>) -> Json<CacheStats> {
     Json(build_cache_stats(&state))
 }
 
 /// GET /stats/blocks - Returns block statistics only.
-async fn stats_blocks_handler(
-    State(state): State<Arc<ControlState>>,
-) -> Json<BlockStats> {
+async fn stats_blocks_handler(State(state): State<Arc<ControlState>>) -> Json<BlockStats> {
     Json(build_block_stats(&state))
 }
 
 /// POST /reload - Reloads all configuration.
-async fn reload_handler(
-    State(_state): State<Arc<ControlState>>,
-) -> Json<ApiResponse<()>> {
+async fn reload_handler(State(_state): State<Arc<ControlState>>) -> Json<ApiResponse<()>> {
     // TODO: Integrate with ConfigHolder to reload configuration
     info!("Configuration reload requested");
 
@@ -1204,7 +1188,9 @@ async fn cache_lookup_handler(
     // Return not found for now
     (
         StatusCode::NOT_FOUND,
-        Json(ApiResponse::<CacheEntryResponse>::error("Entry not found in cache")),
+        Json(ApiResponse::<CacheEntryResponse>::error(
+            "Entry not found in cache",
+        )),
     )
 }
 
@@ -1217,18 +1203,24 @@ async fn cache_flush_handler(
 
     // Get cache reference
     let cache_guard = state.cache.read();
-    
+
     if let Some(ref p) = pattern {
         // Pattern-based flush not yet implemented
         info!(pattern = %p, "Cache flush requested for pattern");
-        Json(ApiResponse::success_with_message(format!("Flushed cache entries matching '{}'", p)))
+        Json(ApiResponse::success_with_message(format!(
+            "Flushed cache entries matching '{}'",
+            p
+        )))
     } else {
         // Full cache flush
         if let Some(ref cache) = *cache_guard {
             let count_before = cache.len();
             cache.clear();
             info!(entries_flushed = count_before, "Full cache flush completed");
-            Json(ApiResponse::success_with_message(format!("Flushed {} cache entries", count_before)))
+            Json(ApiResponse::success_with_message(format!(
+                "Flushed {} cache entries",
+                count_before
+            )))
         } else {
             info!("Cache flush requested but no cache configured");
             Json(ApiResponse::success_with_message("Cache flushed"))
@@ -1265,7 +1257,10 @@ async fn blocklist_update_handler(
     if !exists {
         return (
             StatusCode::NOT_FOUND,
-            Json(ApiResponse::<()>::error(format!("Blocklist '{}' not found", name))),
+            Json(ApiResponse::<()>::error(format!(
+                "Blocklist '{}' not found",
+                name
+            ))),
         );
     }
 
@@ -1274,14 +1269,15 @@ async fn blocklist_update_handler(
 
     (
         StatusCode::OK,
-        Json(ApiResponse::success_with_message(format!("Blocklist '{}' updated", name))),
+        Json(ApiResponse::success_with_message(format!(
+            "Blocklist '{}' updated",
+            name
+        ))),
     )
 }
 
 /// GET /block - Lists custom block rules.
-async fn block_list_handler(
-    State(state): State<Arc<ControlState>>,
-) -> Json<Vec<RuleInfo>> {
+async fn block_list_handler(State(state): State<Arc<ControlState>>) -> Json<Vec<RuleInfo>> {
     let rules = state.custom_blocks.read().clone();
     Json(rules)
 }
@@ -1298,7 +1294,9 @@ async fn block_add_handler(
         (None, None) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(ApiResponse::<RuleInfo>::error("Either 'domain' or 'pattern' must be provided")),
+                Json(ApiResponse::<RuleInfo>::error(
+                    "Either 'domain' or 'pattern' must be provided",
+                )),
             );
         }
     };
@@ -1346,10 +1344,10 @@ async fn block_remove_handler(
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
     let mut rules = state.custom_blocks.write();
-    
+
     // Find the rule to get the domain before removing
     let domain = rules.iter().find(|r| r.id == id).map(|r| r.domain.clone());
-    
+
     let initial_len = rules.len();
     rules.retain(|r| r.id != id);
     drop(rules);
@@ -1361,16 +1359,22 @@ async fn block_remove_handler(
                 filter.remove_block_rule(&domain);
             }
         }
-        
+
         // Persist to file
         if let Err(e) = state.save_rules() {
             warn!(error = %e, "Failed to persist custom rules");
         }
-        
+
         info!(id = %id, "Removed custom block rule");
-        (StatusCode::OK, Json(ApiResponse::success_with_message("Rule removed")))
+        (
+            StatusCode::OK,
+            Json(ApiResponse::success_with_message("Rule removed")),
+        )
     } else {
-        (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::error(format!("Rule '{}' not found", id))))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::<()>::error(format!("Rule '{}' not found", id))),
+        )
     }
 }
 
@@ -1402,7 +1406,7 @@ async fn block_test_handler(
     Query(params): Query<BlockTestParams>,
 ) -> Json<BlockTestResponse> {
     let filter_guard = state.filter.read();
-    
+
     if let Some(ref filter) = *filter_guard {
         let result = filter.test_domain(&params.domain);
         Json(BlockTestResponse {
@@ -1422,9 +1426,7 @@ async fn block_test_handler(
 }
 
 /// GET /allow - Lists custom allow rules.
-async fn allow_list_handler(
-    State(state): State<Arc<ControlState>>,
-) -> Json<Vec<RuleInfo>> {
+async fn allow_list_handler(State(state): State<Arc<ControlState>>) -> Json<Vec<RuleInfo>> {
     let rules = state.custom_allows.read().clone();
     Json(rules)
 }
@@ -1466,10 +1468,10 @@ async fn allow_remove_handler(
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
     let mut rules = state.custom_allows.write();
-    
+
     // Find the rule to get the domain before removing
     let domain = rules.iter().find(|r| r.id == id).map(|r| r.domain.clone());
-    
+
     let initial_len = rules.len();
     rules.retain(|r| r.id != id);
     drop(rules);
@@ -1481,16 +1483,22 @@ async fn allow_remove_handler(
                 filter.remove_allow_rule(&domain);
             }
         }
-        
+
         // Persist to file
         if let Err(e) = state.save_rules() {
             warn!(error = %e, "Failed to persist custom rules");
         }
-        
+
         info!(id = %id, "Removed custom allow rule");
-        (StatusCode::OK, Json(ApiResponse::success_with_message("Rule removed")))
+        (
+            StatusCode::OK,
+            Json(ApiResponse::success_with_message("Rule removed")),
+        )
     } else {
-        (StatusCode::NOT_FOUND, Json(ApiResponse::<()>::error(format!("Rule '{}' not found", id))))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::<()>::error(format!("Rule '{}' not found", id))),
+        )
     }
 }
 
@@ -1526,12 +1534,7 @@ async fn log_tail_handler(
     let n = params.n.min(1000); // Cap at 1000
     let log = state.query_log.read();
 
-    let entries: Vec<_> = log
-        .iter()
-        .rev()
-        .take(n)
-        .cloned()
-        .collect();
+    let entries: Vec<_> = log.iter().rev().take(n).cloned().collect();
 
     Json(entries)
 }
@@ -1582,9 +1585,7 @@ async fn shutdown_handler(
 }
 
 /// GET /health - Simple health check endpoint.
-async fn health_handler(
-    State(state): State<Arc<ControlState>>,
-) -> impl IntoResponse {
+async fn health_handler(State(state): State<Arc<ControlState>>) -> impl IntoResponse {
     let status = *state.status.read();
 
     match status {
@@ -1607,10 +1608,10 @@ fn build_query_stats(stats: &ServerStats) -> QueryStats {
     QueryStats {
         total,
         success: stats.responses.load(Ordering::Relaxed),
-        nxdomain: 0, // TODO: Track NXDOMAIN separately
-        servfail: 0, // TODO: Track SERVFAIL separately
-        blocked: 0,  // TODO: Integrate with filter stats
-        cached: 0,   // TODO: Integrate with cache stats
+        nxdomain: 0,         // TODO: Track NXDOMAIN separately
+        servfail: 0,         // TODO: Track SERVFAIL separately
+        blocked: 0,          // TODO: Integrate with filter stats
+        cached: 0,           // TODO: Integrate with cache stats
         avg_latency_ms: 0.0, // TODO: Track latency
         qps: total as f64 / uptime,
         by_protocol: Some(QueryStatsByProtocol {
@@ -1842,7 +1843,7 @@ mod tests {
     fn test_server_status_returns_correct_response() {
         // Test the status mapping logic
         let state = create_test_state();
-        
+
         // Running should return healthy
         assert_eq!(*state.status.read(), ServerStatus::Running);
 

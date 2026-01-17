@@ -163,12 +163,7 @@ impl RData {
     /// * `data` - The complete message data (for name compression)
     /// * `offset` - Offset to the start of the RDATA
     /// * `rdlength` - Length of the RDATA
-    pub fn parse(
-        rtype: RecordType,
-        data: &[u8],
-        offset: usize,
-        rdlength: u16,
-    ) -> Result<Self> {
+    pub fn parse(rtype: RecordType, data: &[u8], offset: usize, rdlength: u16) -> Result<Self> {
         let rdata_slice = data
             .get(offset..offset + rdlength as usize)
             .ok_or_else(|| Error::buffer_too_short(offset + rdlength as usize, data.len()))?;

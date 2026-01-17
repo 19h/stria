@@ -6,7 +6,7 @@
 use crate::class::RecordClass;
 use crate::edns::Edns;
 use crate::error::{Error, Result};
-use crate::header::{Header, HeaderFlags, HEADER_SIZE};
+use crate::header::{HEADER_SIZE, Header, HeaderFlags};
 use crate::name::Name;
 use crate::opcode::OpCode;
 use crate::question::{Question, QuestionParser};
@@ -353,7 +353,10 @@ impl Message {
     pub fn is_referral(&self) -> bool {
         self.answers.is_empty()
             && !self.authority.is_empty()
-            && self.authority.iter().any(|r| r.record_type() == Some(RecordType::NS))
+            && self
+                .authority
+                .iter()
+                .any(|r| r.record_type() == Some(RecordType::NS))
     }
 
     /// Returns answer records of a specific type.
@@ -442,7 +445,9 @@ impl Message {
         // Update response code with extended bits from EDNS
         let mut header = header;
         if let Some(ref e) = edns {
-            if let Some(full_rcode) = ResponseCode::from_parts(header.rcode.header_rcode(), e.extended_rcode()) {
+            if let Some(full_rcode) =
+                ResponseCode::from_parts(header.rcode.header_rcode(), e.extended_rcode())
+            {
                 header.rcode = full_rcode;
             }
         }

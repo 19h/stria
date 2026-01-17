@@ -1,7 +1,7 @@
 //! Cache key implementation.
 
-use stria_proto::{class::Class, Name, Question, rtype::Type};
 use std::hash::{Hash, Hasher};
+use stria_proto::{Name, Question, class::Class, rtype::Type};
 
 /// Cache key for DNS records.
 #[derive(Debug, Clone, Eq)]
@@ -64,8 +64,8 @@ impl Hash for CacheKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stria_proto::{RecordClass, RecordType};
     use std::str::FromStr;
+    use stria_proto::{RecordClass, RecordType};
 
     #[test]
     fn test_cache_key_equality() {

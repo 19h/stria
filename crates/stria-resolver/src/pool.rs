@@ -1,10 +1,10 @@
 //! Connection pooling for TCP-based protocols.
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use parking_lot::Mutex;
 use tokio::net::TcpStream;
 use tokio::sync::Semaphore;
 

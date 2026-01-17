@@ -1,7 +1,7 @@
 //! Cache entry implementation.
 
-use stria_proto::{Message, ResourceRecord, ResponseCode};
 use std::time::{Duration, Instant};
+use stria_proto::{Message, ResourceRecord, ResponseCode};
 
 /// A cached DNS response.
 #[derive(Debug, Clone)]

@@ -45,8 +45,8 @@ use std::io::{self, BufRead, BufReader};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
@@ -637,7 +637,11 @@ pub struct Rule {
 
 impl Rule {
     /// Creates a new rule with default settings.
-    pub fn new(pattern: impl Into<CompactString>, rule_type: RuleType, action: FilterAction) -> Self {
+    pub fn new(
+        pattern: impl Into<CompactString>,
+        rule_type: RuleType,
+        action: FilterAction,
+    ) -> Self {
         Self {
             pattern: pattern.into(),
             rule_type,
@@ -1051,7 +1055,8 @@ impl CompiledPatterns {
     fn add_prefix(&mut self, pattern: CompactString, rule_idx: usize) {
         self.prefix_patterns.push((pattern, rule_idx));
         // Keep sorted by length (longest first) for correct matching
-        self.prefix_patterns.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        self.prefix_patterns
+            .sort_by(|a, b| b.0.len().cmp(&a.0.len()));
     }
 
     /// Finds a substring match.
@@ -1421,7 +1426,8 @@ impl FilterEngine {
     fn add_exception_rule(&self, pattern: &str, rule_idx: usize, rule: &Rule) -> Result<()> {
         match rule.rule_type {
             RuleType::Exact => {
-                self.exceptions.insert(CompactString::from(pattern), rule_idx);
+                self.exceptions
+                    .insert(CompactString::from(pattern), rule_idx);
             }
             RuleType::Suffix | RuleType::Wildcard => {
                 let mut trie = self.exception_suffix_trie.write();
@@ -1430,7 +1436,8 @@ impl FilterEngine {
             _ => {
                 // For other types, we still add to exceptions map but they'll be
                 // checked differently
-                self.exceptions.insert(CompactString::from(pattern), rule_idx);
+                self.exceptions
+                    .insert(CompactString::from(pattern), rule_idx);
             }
         }
         Ok(())
@@ -1440,7 +1447,8 @@ impl FilterEngine {
     fn add_blocking_rule(&self, pattern: &str, rule_idx: usize, rule: &Rule) -> Result<()> {
         match rule.rule_type {
             RuleType::Exact => {
-                self.exact_matches.insert(CompactString::from(pattern), rule_idx);
+                self.exact_matches
+                    .insert(CompactString::from(pattern), rule_idx);
             }
             RuleType::Suffix | RuleType::Wildcard => {
                 let mut trie = self.suffix_trie.write();
@@ -1848,7 +1856,11 @@ impl FilterEngine {
 
     /// Returns the names of loaded blocklists.
     pub fn blocklist_names(&self) -> Vec<CompactString> {
-        self.blocklists.read().iter().map(|b| b.name.clone()).collect()
+        self.blocklists
+            .read()
+            .iter()
+            .map(|b| b.name.clone())
+            .collect()
     }
 
     /// Updates the engine configuration.
@@ -1998,11 +2010,19 @@ fn is_valid_domain(s: &str) -> bool {
             return false;
         }
         // Labels must start with alphanumeric
-        if !label.chars().next().map_or(false, |c| c.is_ascii_alphanumeric()) {
+        if !label
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_alphanumeric())
+        {
             return false;
         }
         // Labels must end with alphanumeric
-        if !label.chars().last().map_or(false, |c| c.is_ascii_alphanumeric()) {
+        if !label
+            .chars()
+            .last()
+            .map_or(false, |c| c.is_ascii_alphanumeric())
+        {
             // Allow ending with dash for punycode
             if !label.ends_with('-') || !label.starts_with("xn--") {
                 return false;
@@ -2057,7 +2077,9 @@ mod tests {
     #[test]
     fn test_exact_match() {
         let engine = FilterEngine::new();
-        engine.add_rule(Rule::block("ads.example.com", RuleType::Exact)).unwrap();
+        engine
+            .add_rule(Rule::block("ads.example.com", RuleType::Exact))
+            .unwrap();
 
         let result = engine.check(&test_name("ads.example.com"));
         assert!(result.is_blocked());
@@ -2072,7 +2094,9 @@ mod tests {
     #[test]
     fn test_suffix_match() {
         let engine = FilterEngine::new();
-        engine.add_rule(Rule::block("doubleclick.net", RuleType::Suffix)).unwrap();
+        engine
+            .add_rule(Rule::block("doubleclick.net", RuleType::Suffix))
+            .unwrap();
 
         let result = engine.check(&test_name("ad.doubleclick.net"));
         assert!(result.is_blocked());
@@ -2089,10 +2113,14 @@ mod tests {
         let engine = FilterEngine::new();
 
         // Block all of example.com
-        engine.add_rule(Rule::block("example.com", RuleType::Suffix)).unwrap();
+        engine
+            .add_rule(Rule::block("example.com", RuleType::Suffix))
+            .unwrap();
 
         // But allow safe.example.com
-        engine.add_rule(Rule::allow("safe.example.com", RuleType::Exact)).unwrap();
+        engine
+            .add_rule(Rule::allow("safe.example.com", RuleType::Exact))
+            .unwrap();
 
         let result = engine.check(&test_name("ads.example.com"));
         assert!(result.is_blocked());
@@ -2224,8 +2252,12 @@ mod tests {
     #[test]
     fn test_filter_stats() {
         let engine = FilterEngine::new();
-        engine.add_rule(Rule::block("ads.example.com", RuleType::Exact)).unwrap();
-        engine.add_rule(Rule::block("tracking.com", RuleType::Suffix)).unwrap();
+        engine
+            .add_rule(Rule::block("ads.example.com", RuleType::Exact))
+            .unwrap();
+        engine
+            .add_rule(Rule::block("tracking.com", RuleType::Suffix))
+            .unwrap();
 
         let stats = engine.stats();
         assert_eq!(stats.total_rules, 2);
@@ -2242,7 +2274,9 @@ mod tests {
             cname_protection: true,
         };
         let engine = FilterEngine::with_config(config);
-        engine.add_rule(Rule::block("ads.example.com", RuleType::Exact)).unwrap();
+        engine
+            .add_rule(Rule::block("ads.example.com", RuleType::Exact))
+            .unwrap();
 
         // First check - cache miss
         let result1 = engine.check(&test_name("ads.example.com"));
@@ -2294,13 +2328,19 @@ mod tests {
 
         assert_eq!(engine.blocklist_count(), 2);
         assert!(engine.check(&test_name("ads.example.com")).is_blocked());
-        assert!(engine.check(&test_name("tracking.example.com")).is_blocked());
+        assert!(
+            engine
+                .check(&test_name("tracking.example.com"))
+                .is_blocked()
+        );
     }
 
     #[test]
     fn test_case_insensitivity() {
         let engine = FilterEngine::new();
-        engine.add_rule(Rule::block("ADS.EXAMPLE.COM", RuleType::Exact)).unwrap();
+        engine
+            .add_rule(Rule::block("ADS.EXAMPLE.COM", RuleType::Exact))
+            .unwrap();
 
         assert!(engine.check(&test_name("ads.example.com")).is_blocked());
         assert!(engine.check(&test_name("ADS.EXAMPLE.COM")).is_blocked());

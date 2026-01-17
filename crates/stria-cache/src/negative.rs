@@ -1,7 +1,7 @@
 //! Negative caching implementation.
 
-use stria_proto::ResponseCode;
 use std::time::Duration;
+use stria_proto::ResponseCode;
 
 /// Configuration for negative caching.
 #[derive(Debug, Clone)]
@@ -31,7 +31,7 @@ pub fn negative_ttl_for_rcode(rcode: ResponseCode, config: &NegativeCacheConfig)
     match rcode {
         ResponseCode::NXDomain => config.nxdomain_ttl,
         ResponseCode::NoError => config.nodata_ttl, // NODATA
-        _ => Duration::ZERO, // Don't cache other error types
+        _ => Duration::ZERO,                        // Don't cache other error types
     }
 }
 

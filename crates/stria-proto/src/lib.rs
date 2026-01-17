@@ -36,33 +36,33 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
-pub mod error;
-pub mod opcode;
-pub mod rcode;
 pub mod class;
-pub mod rtype;
-pub mod name;
+pub mod edns;
+pub mod error;
 pub mod header;
+pub mod message;
+pub mod name;
+pub mod opcode;
 pub mod question;
+pub mod rcode;
 pub mod rdata;
 pub mod record;
-pub mod message;
+pub mod rtype;
 pub mod wire;
-pub mod edns;
 
 // Re-exports for convenience
-pub use error::{Error, Result};
-pub use opcode::OpCode;
-pub use rcode::ResponseCode;
 pub use class::RecordClass;
-pub use rtype::RecordType;
-pub use name::Name;
-pub use header::Header;
-pub use question::Question;
-pub use record::ResourceRecord;
-pub use message::Message;
 pub use edns::{Edns, EdnsOption};
+pub use error::{Error, Result};
+pub use header::Header;
+pub use message::Message;
+pub use name::Name;
+pub use opcode::OpCode;
+pub use question::Question;
+pub use rcode::ResponseCode;
 pub use rdata::RData;
+pub use record::ResourceRecord;
+pub use rtype::RecordType;
 
 /// Maximum length of a DNS label (63 bytes per RFC 1035)
 pub const MAX_LABEL_LENGTH: usize = 63;

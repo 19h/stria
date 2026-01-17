@@ -239,7 +239,10 @@ mod tests {
             0x00, 0x01,
         ];
         let aaaa = AAAA::parse(&data).unwrap();
-        assert_eq!(aaaa.address(), Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
+        assert_eq!(
+            aaaa.address(),
+            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)
+        );
     }
 
     #[test]

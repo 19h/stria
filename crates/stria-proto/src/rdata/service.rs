@@ -561,13 +561,9 @@ impl SVCB {
                 }
                 SvcParamValue::NoDefaultAlpn => Vec::new(),
                 SvcParamValue::Port(p) => p.to_be_bytes().to_vec(),
-                SvcParamValue::Ipv4Hint(addrs) => {
-                    addrs.iter().flat_map(|a| a.octets()).collect()
-                }
+                SvcParamValue::Ipv4Hint(addrs) => addrs.iter().flat_map(|a| a.octets()).collect(),
                 SvcParamValue::Ech(data) => data.clone(),
-                SvcParamValue::Ipv6Hint(addrs) => {
-                    addrs.iter().flat_map(|a| a.octets()).collect()
-                }
+                SvcParamValue::Ipv6Hint(addrs) => addrs.iter().flat_map(|a| a.octets()).collect(),
                 SvcParamValue::DohPath(path) => path.as_bytes().to_vec(),
                 SvcParamValue::Unknown(_, data) => data.clone(),
             };

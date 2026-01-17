@@ -4,8 +4,8 @@
 //! including support for name compression (RFC 1035 Section 4.1.4).
 
 use super::Name;
-use crate::error::{Error, Result};
 use crate::MAX_NAME_LENGTH;
+use crate::error::{Error, Result};
 use bytes::Bytes;
 use smallvec::SmallVec;
 
@@ -60,7 +60,10 @@ impl<'a> NameParser<'a> {
 
                 // Validate pointer doesn't point forward or into the pointer itself
                 if target >= pos {
-                    return Err(Error::InvalidCompressionPointer { offset: pos, target });
+                    return Err(Error::InvalidCompressionPointer {
+                        offset: pos,
+                        target,
+                    });
                 }
 
                 // Track consumption before following pointer
@@ -104,7 +107,9 @@ impl<'a> NameParser<'a> {
 
             // Regular label
             if pos + 1 + len > self.message.len() {
-                return Err(Error::UnexpectedEof { offset: pos + 1 + len });
+                return Err(Error::UnexpectedEof {
+                    offset: pos + 1 + len,
+                });
             }
 
             // Check total name length
@@ -221,7 +226,8 @@ impl<'a> NameWriter<'a> {
             // Record this position for future compression
             let current_offset = self.buffer.len();
             if current_offset < 0x3FFF {
-                self.compression_table.insert(suffix_hash, current_offset as u16);
+                self.compression_table
+                    .insert(suffix_hash, current_offset as u16);
             }
 
             // Write the label
@@ -278,7 +284,8 @@ mod tests {
         // At offset 0: example.com.
         // At offset 12: www.<pointer to 0>
         let wire = [
-            7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0, // example.com.
+            7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm',
+            0, // example.com.
             3, b'w', b'w', b'w', 0xC0, 0x00, // www.<ptr to 0>
         ];
 
@@ -351,7 +358,7 @@ mod tests {
 
         // For now, skip the compression size assertion - compression table implementation
         // needs work to handle suffix matching properly. Just verify parsing works.
-        
+
         // Verify we can parse both names back (if compression was used)
         // Note: if compression isn't working, the second name starts at first_len
         // but if it is working, we need to adjust. For now, test basic writing.

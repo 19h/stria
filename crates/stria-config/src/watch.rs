@@ -2,7 +2,7 @@
 
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
 
 /// Configuration file watcher.
@@ -31,7 +31,8 @@ impl ConfigWatcher {
 
     /// Starts watching a file.
     pub fn watch(&mut self, path: impl AsRef<Path>) -> notify::Result<()> {
-        self.watcher.watch(path.as_ref(), RecursiveMode::NonRecursive)
+        self.watcher
+            .watch(path.as_ref(), RecursiveMode::NonRecursive)
     }
 
     /// Stops watching a file.

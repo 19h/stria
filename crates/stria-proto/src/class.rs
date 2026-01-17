@@ -12,16 +12,7 @@ use std::fmt;
 /// The CLASS field in DNS resource records identifies the protocol family.
 /// See RFC 1035 Section 3.2.4 and RFC 6895 for the complete registry.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    IntoPrimitive,
-    TryFromPrimitive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive, Serialize, Deserialize,
 )]
 #[repr(u16)]
 pub enum RecordClass {

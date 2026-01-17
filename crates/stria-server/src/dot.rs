@@ -30,18 +30,18 @@
 
 use crate::handler::{QueryContext, QueryHandler};
 use crate::{Protocol, Result, ServerError};
-use stria_proto::Message;
 use bytes::{Bytes, BytesMut};
-use rustls::pki_types::CertificateDer;
 use rustls::ServerConfig;
+use rustls::pki_types::CertificateDer;
 use socket2::{Domain, Socket, Type};
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use stria_proto::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
@@ -82,10 +82,7 @@ impl DotServer {
     /// # Errors
     ///
     /// Returns an error if the files cannot be read or parsed.
-    pub fn load_tls_config<P: AsRef<Path>>(
-        cert_path: P,
-        key_path: P,
-    ) -> Result<Arc<ServerConfig>> {
+    pub fn load_tls_config<P: AsRef<Path>>(cert_path: P, key_path: P) -> Result<Arc<ServerConfig>> {
         Self::load_tls_config_with_alpn(cert_path, key_path, false)
     }
 
@@ -106,9 +103,8 @@ impl DotServer {
         enable_alpn: bool,
     ) -> Result<Arc<ServerConfig>> {
         // Load certificate chain
-        let cert_file = File::open(cert_path.as_ref()).map_err(|e| {
-            ServerError::Tls(format!("Failed to open certificate file: {}", e))
-        })?;
+        let cert_file = File::open(cert_path.as_ref())
+            .map_err(|e| ServerError::Tls(format!("Failed to open certificate file: {}", e)))?;
         let mut cert_reader = BufReader::new(cert_file);
         let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_reader)
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -119,9 +115,8 @@ impl DotServer {
         }
 
         // Load private key
-        let key_file = File::open(key_path.as_ref()).map_err(|e| {
-            ServerError::Tls(format!("Failed to open key file: {}", e))
-        })?;
+        let key_file = File::open(key_path.as_ref())
+            .map_err(|e| ServerError::Tls(format!("Failed to open key file: {}", e)))?;
         let mut key_reader = BufReader::new(key_file);
         let key = rustls_pemfile::private_key(&mut key_reader)
             .map_err(|e| ServerError::Tls(format!("Failed to parse private key: {}", e)))?
@@ -385,16 +380,14 @@ mod tests {
 
     // Generate a self-signed certificate for testing
     fn generate_test_cert() -> (NamedTempFile, NamedTempFile) {
-        use rcgen::{generate_simple_self_signed, CertifiedKey};
+        use rcgen::{CertifiedKey, generate_simple_self_signed};
 
         let subject_alt_names = vec!["localhost".to_string(), "127.0.0.1".to_string()];
         let CertifiedKey { cert, key_pair } =
             generate_simple_self_signed(subject_alt_names).unwrap();
 
         let mut cert_file = NamedTempFile::new().unwrap();
-        cert_file
-            .write_all(cert.pem().as_bytes())
-            .unwrap();
+        cert_file.write_all(cert.pem().as_bytes()).unwrap();
 
         let mut key_file = NamedTempFile::new().unwrap();
         key_file
@@ -408,8 +401,7 @@ mod tests {
     async fn test_dot_server_bind() {
         install_crypto_provider();
         let (cert_file, key_file) = generate_test_cert();
-        let tls_config =
-            DotServer::load_tls_config(cert_file.path(), key_file.path()).unwrap();
+        let tls_config = DotServer::load_tls_config(cert_file.path(), key_file.path()).unwrap();
         let handler = Arc::new(RefusedHandler);
 
         let server = DotServer::bind("127.0.0.1:0".parse().unwrap(), tls_config, handler)
@@ -424,8 +416,7 @@ mod tests {
         install_crypto_provider();
         let (cert_file, key_file) = generate_test_cert();
         let tls_config =
-            DotServer::load_tls_config_with_alpn(cert_file.path(), key_file.path(), true)
-                .unwrap();
+            DotServer::load_tls_config_with_alpn(cert_file.path(), key_file.path(), true).unwrap();
 
         assert_eq!(tls_config.alpn_protocols, vec![ALPN_DOT.to_vec()]);
     }

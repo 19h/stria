@@ -32,29 +32,29 @@
 
 use crate::handler::{QueryContext, QueryHandler};
 use crate::{Protocol, Result, ServerError};
-use stria_proto::Message;
+use axum::Router;
 use axum::body::Body;
 use axum::extract::{Query, State};
-use axum::http::{header, HeaderMap, Request, StatusCode};
+use axum::http::{HeaderMap, Request, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
 use bytes::Bytes;
 use data_encoding::BASE64URL_NOPAD;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder as ConnectionBuilder;
 use hyper_util::service::TowerToHyperService;
-use rustls::pki_types::CertificateDer;
 use rustls::ServerConfig;
+use rustls::pki_types::CertificateDer;
 use serde::Deserialize;
 use socket2::{Domain, Socket, Type};
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use stria_proto::Message;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
 use tower_http::trace::TraceLayer;
@@ -108,14 +108,10 @@ impl DohServer {
     /// # Returns
     ///
     /// A configured `ServerConfig` suitable for DoH with HTTP/2 ALPN.
-    pub fn load_tls_config<P: AsRef<Path>>(
-        cert_path: P,
-        key_path: P,
-    ) -> Result<Arc<ServerConfig>> {
+    pub fn load_tls_config<P: AsRef<Path>>(cert_path: P, key_path: P) -> Result<Arc<ServerConfig>> {
         // Load certificate chain
-        let cert_file = File::open(cert_path.as_ref()).map_err(|e| {
-            ServerError::Tls(format!("Failed to open certificate file: {}", e))
-        })?;
+        let cert_file = File::open(cert_path.as_ref())
+            .map_err(|e| ServerError::Tls(format!("Failed to open certificate file: {}", e)))?;
         let mut cert_reader = BufReader::new(cert_file);
         let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_reader)
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -126,9 +122,8 @@ impl DohServer {
         }
 
         // Load private key
-        let key_file = File::open(key_path.as_ref()).map_err(|e| {
-            ServerError::Tls(format!("Failed to open key file: {}", e))
-        })?;
+        let key_file = File::open(key_path.as_ref())
+            .map_err(|e| ServerError::Tls(format!("Failed to open key file: {}", e)))?;
         let mut key_reader = BufReader::new(key_file);
         let key = rustls_pemfile::private_key(&mut key_reader)
             .map_err(|e| ServerError::Tls(format!("Failed to parse private key: {}", e)))?
@@ -303,10 +298,7 @@ async fn handle_connection(
     let service = TowerToHyperService::new(router);
 
     // Serve the connection
-    if let Err(e) = builder
-        .serve_connection_with_upgrades(io, service)
-        .await
-    {
+    if let Err(e) = builder.serve_connection_with_upgrades(io, service).await {
         // Connection errors are typically just client disconnects
         debug!(error = %e, client = %peer, conn_id, "HTTP connection ended");
     }
@@ -421,7 +413,11 @@ async fn process_dns_query(
         .header(header::CACHE_CONTROL, format_cache_control(&response))
         .body(Body::from(wire))
         .unwrap_or_else(|_| {
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to build response").into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to build response",
+            )
+                .into_response()
         })
 }
 
@@ -496,10 +492,10 @@ async fn handle_metrics() -> impl IntoResponse {
 mod tests {
     use super::*;
     use crate::handler::RefusedHandler;
-    use stria_proto::name::Name;
-    use stria_proto::question::Question;
     use std::io::Write;
     use std::str::FromStr;
+    use stria_proto::name::Name;
+    use stria_proto::question::Question;
     use tempfile::NamedTempFile;
 
     // Install the ring crypto provider for tests
@@ -509,7 +505,7 @@ mod tests {
 
     // Generate a self-signed certificate for testing
     fn generate_test_cert() -> (NamedTempFile, NamedTempFile) {
-        use rcgen::{generate_simple_self_signed, CertifiedKey};
+        use rcgen::{CertifiedKey, generate_simple_self_signed};
 
         let subject_alt_names = vec!["localhost".to_string(), "127.0.0.1".to_string()];
         let CertifiedKey { cert, key_pair } =

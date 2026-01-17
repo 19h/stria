@@ -55,7 +55,11 @@ impl Question {
     /// Creates a new question with generic type and class.
     #[inline]
     pub fn new_generic(qname: Name, qtype: Type, qclass: Class) -> Self {
-        Self { qname, qtype, qclass }
+        Self {
+            qname,
+            qtype,
+            qclass,
+        }
     }
 
     /// Creates a question for an A record lookup.
@@ -134,7 +138,11 @@ impl Question {
         let qclass = Class::from_u16(qclass_value);
 
         Ok((
-            Self { qname, qtype, qclass },
+            Self {
+                qname,
+                qtype,
+                qclass,
+            },
             name_len + 4,
         ))
     }
@@ -315,7 +323,11 @@ mod tests {
         let q = Question::a(name.clone());
 
         // A record answers A query
-        assert!(q.is_answered_by(&name, Type::Known(RecordType::A), Class::Known(RecordClass::IN)));
+        assert!(q.is_answered_by(
+            &name,
+            Type::Known(RecordType::A),
+            Class::Known(RecordClass::IN)
+        ));
 
         // CNAME answers A query
         assert!(q.is_answered_by(

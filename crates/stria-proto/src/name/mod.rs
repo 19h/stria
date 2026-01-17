@@ -252,7 +252,9 @@ impl Name {
     /// Returns the subdomain formed by prepending a label.
     pub fn prepend_label(&self, label: &str) -> Result<Self> {
         if label.len() > MAX_LABEL_LENGTH {
-            return Err(Error::LabelTooLong { length: label.len() });
+            return Err(Error::LabelTooLong {
+                length: label.len(),
+            });
         }
 
         let self_wire = self.as_wire();

@@ -13,16 +13,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// See RFC 1035, RFC 6895, and RFC 8914 (Extended DNS Errors) for details.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    IntoPrimitive,
-    TryFromPrimitive,
-    Serialize,
-    Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, TryFromPrimitive, Serialize, Deserialize,
 )]
 #[repr(u16)]
 pub enum ResponseCode {

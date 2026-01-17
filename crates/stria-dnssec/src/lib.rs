@@ -45,6 +45,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use arc_swap::ArcSwap;
@@ -58,8 +59,8 @@ use thiserror::Error;
 use tracing::{debug, instrument, trace, warn};
 
 use stria_proto::{
-    rdata::{DNSKEY, DS, NSEC, NSEC3, RRSIG},
     Message, Name, RecordType, ResourceRecord,
+    rdata::{DNSKEY, DS, NSEC, NSEC3, RData, RRSIG},
 };
 
 // ============================================================================
@@ -161,6 +162,24 @@ pub enum DnssecError {
     /// Invalid public key format.
     #[error("invalid public key format: {0}")]
     InvalidPublicKey(String),
+
+    /// Failed to fetch DNSKEY records.
+    #[error("failed to fetch DNSKEY for {zone}: {reason}")]
+    KeyFetchFailed {
+        /// The zone we tried to fetch keys for.
+        zone: String,
+        /// The reason the fetch failed.
+        reason: String,
+    },
+
+    /// Chain of trust is broken.
+    #[error("chain of trust broken at {zone}: {reason}")]
+    ChainOfTrustBroken {
+        /// The zone where the chain broke.
+        zone: String,
+        /// The reason the chain broke.
+        reason: String,
+    },
 }
 
 /// Result type for DNSSEC operations.
@@ -549,6 +568,66 @@ pub trait TrustAnchorStore: Send + Sync {
     }
 }
 
+// ============================================================================
+// DNSKEY Fetcher Trait
+// ============================================================================
+
+/// Trait for fetching DNSKEY records from authoritative servers.
+///
+/// This trait allows the DNSSEC validator to request DNSKEY records when they
+/// are not present in the response being validated. Implementations typically
+/// perform recursive DNS queries to fetch the required DNSKEY RRset.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// struct MyFetcher { /* ... */ }
+///
+/// impl DnskeyFetcher for MyFetcher {
+///     async fn fetch_dnskey(&self, zone: &Name) -> Option<Message> {
+///         // Perform DNS query for zone DNSKEY
+///         // Return the response message containing DNSKEY records
+///     }
+/// }
+/// ```
+pub trait DnskeyFetcher: Send + Sync {
+    /// Fetches the DNSKEY RRset for the given zone.
+    ///
+    /// Returns the DNS response message containing the DNSKEY records,
+    /// or `None` if the fetch failed or no DNSKEY records exist.
+    ///
+    /// The returned message should contain:
+    /// - DNSKEY records in the answer section
+    /// - RRSIG records covering the DNSKEY RRset
+    fn fetch_dnskey(
+        &self,
+        zone: &Name,
+    ) -> impl std::future::Future<Output = Option<Message>> + Send;
+
+    /// Fetches the DS RRset for the given zone from its parent.
+    ///
+    /// Returns the DNS response message containing the DS records,
+    /// or `None` if the fetch failed or the zone is unsigned.
+    fn fetch_ds(&self, zone: &Name) -> impl std::future::Future<Output = Option<Message>> + Send;
+}
+
+/// A no-op DNSKEY fetcher that never fetches keys.
+///
+/// This is used as the default when no fetcher is configured, maintaining
+/// backward compatibility with existing code.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoOpFetcher;
+
+impl DnskeyFetcher for NoOpFetcher {
+    async fn fetch_dnskey(&self, _zone: &Name) -> Option<Message> {
+        None
+    }
+
+    async fn fetch_ds(&self, _zone: &Name) -> Option<Message> {
+        None
+    }
+}
+
 /// Default trust anchor store with ICANN root KSKs.
 ///
 /// This implementation provides:
@@ -596,10 +675,8 @@ impl DefaultTrustAnchorStore {
             algorithm: 8,
             digest_type: Some(2),
             digest: Some(
-                hex_decode(
-                    "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D",
-                )
-                .unwrap_or_default(),
+                hex_decode("E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D")
+                    .unwrap_or_default(),
             ),
             public_key: None,
             flags: None,
@@ -615,10 +692,8 @@ impl DefaultTrustAnchorStore {
             algorithm: 8,
             digest_type: Some(2),
             digest: Some(
-                hex_decode(
-                    "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16",
-                )
-                .unwrap_or_default(),
+                hex_decode("683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16")
+                    .unwrap_or_default(),
             ),
             public_key: None,
             flags: None,
@@ -836,7 +911,15 @@ impl Default for ValidatorConfig {
 /// The validator verifies the cryptographic chain of trust from configured
 /// trust anchors down to the response data. It supports all modern DNSSEC
 /// algorithms and provides detailed validation results.
-pub struct DnssecValidator<S: TrustAnchorStore = DefaultTrustAnchorStore> {
+///
+/// # Type Parameters
+///
+/// * `S` - The trust anchor store implementation
+/// * `F` - The DNSKEY fetcher implementation (defaults to `NoOpFetcher`)
+pub struct DnssecValidator<
+    S: TrustAnchorStore = DefaultTrustAnchorStore,
+    F: DnskeyFetcher = NoOpFetcher,
+> {
     /// The trust anchor store.
     store: S,
 
@@ -845,15 +928,28 @@ pub struct DnssecValidator<S: TrustAnchorStore = DefaultTrustAnchorStore> {
 
     /// Cache of validated DNSKEY records.
     key_cache: RwLock<HashMap<Name, Vec<DNSKEY>>>,
+
+    /// Optional DNSKEY fetcher for retrieving keys not in the message.
+    fetcher: F,
+
+    /// Flag to prevent recursive DNSKEY fetching.
+    /// Set to true while fetching/validating DNSKEY records.
+    fetching_keys: AtomicBool,
 }
 
-impl<S: TrustAnchorStore> DnssecValidator<S> {
+impl<S: TrustAnchorStore> DnssecValidator<S, NoOpFetcher> {
     /// Creates a new validator with the given trust anchor store.
+    ///
+    /// This creates a validator without a DNSKEY fetcher. The validator will
+    /// only be able to validate responses that contain all required DNSKEY
+    /// records in the message itself.
     pub fn new(store: S) -> Self {
         Self {
             store,
             config: ValidatorConfig::default(),
             key_cache: RwLock::new(HashMap::new()),
+            fetcher: NoOpFetcher,
+            fetching_keys: AtomicBool::new(false),
         }
     }
 
@@ -863,6 +959,36 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
             store,
             config,
             key_cache: RwLock::new(HashMap::new()),
+            fetcher: NoOpFetcher,
+            fetching_keys: AtomicBool::new(false),
+        }
+    }
+}
+
+impl<S: TrustAnchorStore, F: DnskeyFetcher> DnssecValidator<S, F> {
+    /// Creates a new validator with a DNSKEY fetcher.
+    ///
+    /// The fetcher allows the validator to retrieve DNSKEY records when they
+    /// are not present in the response being validated. This is required for
+    /// proper DNSSEC validation of referral responses.
+    pub fn with_fetcher(store: S, fetcher: F) -> Self {
+        Self {
+            store,
+            config: ValidatorConfig::default(),
+            key_cache: RwLock::new(HashMap::new()),
+            fetcher,
+            fetching_keys: AtomicBool::new(false),
+        }
+    }
+
+    /// Creates a new validator with custom configuration and a DNSKEY fetcher.
+    pub fn with_config_and_fetcher(store: S, config: ValidatorConfig, fetcher: F) -> Self {
+        Self {
+            store,
+            config,
+            key_cache: RwLock::new(HashMap::new()),
+            fetcher,
+            fetching_keys: AtomicBool::new(false),
         }
     }
 
@@ -874,6 +1000,11 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
     /// Returns the validator configuration.
     pub fn config(&self) -> &ValidatorConfig {
         &self.config
+    }
+
+    /// Returns a reference to the DNSKEY fetcher.
+    pub fn fetcher(&self) -> &F {
+        &self.fetcher
     }
 
     /// Validates a DNS response message.
@@ -913,11 +1044,7 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
             }
         };
 
-        trace!(
-            "Found trust anchor at {} for query {}",
-            anchor_zone,
-            qname
-        );
+        trace!("Found trust anchor at {} for query {}", anchor_zone, qname);
 
         // Check for NXDOMAIN or NODATA responses
         if message.is_nxdomain() || (message.answers().is_empty() && !message.is_referral()) {
@@ -938,13 +1065,51 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
         }
 
         // Validate authority section RRsets
+        // For referral responses, NS records are NOT signed by the parent zone.
+        // Only DS records in referrals are signed. NS records are delegation
+        // pointers and are validated when we query the child zone.
+        let is_referral = message.is_referral();
         for rrset in group_rrsets(message.authority()) {
+            // Skip NS records in referral responses - they're unsigned delegation records
+            if is_referral && rrset.1 == RecordType::NS {
+                trace!(
+                    "Skipping unsigned NS delegation record {} in referral",
+                    rrset.0
+                );
+                continue;
+            }
+
+            // For referral responses, DS records should be validated if present
+            // If no DS record exists, it indicates an insecure delegation
             match self.verify_rrset(&rrset, message).await {
                 Ok(()) => trace!("Validated authority RRset {} {:?}", rrset.0, rrset.1),
                 Err(e) => {
+                    // For referrals, missing RRSIG on non-NS records might indicate
+                    // an insecure delegation rather than an error
+                    if is_referral {
+                        if matches!(e, DnssecError::MissingRrsig { .. }) {
+                            trace!(
+                                "No RRSIG for {:?} {} in referral - possible insecure delegation",
+                                rrset.1, rrset.0
+                            );
+                            continue;
+                        }
+                    }
                     warn!("Authority RRset validation failed: {}", e);
                     return ValidationResult::Bogus(e.to_string());
                 }
+            }
+        }
+
+        // For referral responses without DS records, this is an insecure delegation
+        if is_referral {
+            let has_ds = message
+                .authority()
+                .iter()
+                .any(|r| r.record_type() == Some(RecordType::DS));
+            if !has_ds {
+                trace!("Referral without DS record - insecure delegation");
+                return ValidationResult::Insecure;
             }
         }
 
@@ -1035,6 +1200,11 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
     }
 
     /// Finds the DNSKEY that can verify the given RRSIG.
+    ///
+    /// This method searches for the DNSKEY in the following order:
+    /// 1. In the message being validated (answers and authority sections)
+    /// 2. In the validated key cache
+    /// 3. By fetching from the network using the DNSKEY fetcher
     async fn find_signing_key(&self, rrsig: &RRSIG, message: &Message) -> Result<DNSKEY> {
         let signer = rrsig.signer();
         let key_tag = rrsig.key_tag();
@@ -1057,12 +1227,314 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
         if let Some(keys) = self.key_cache.read().get(signer) {
             for key in keys {
                 if key.key_tag() == key_tag && key.algorithm() == algorithm {
+                    trace!("Found DNSKEY {} in cache for {}", key_tag, signer);
                     return Ok(key.clone());
                 }
             }
         }
 
-        Err(DnssecError::NoMatchingKey { key_tag })
+        // Prevent recursive fetching - if we're already fetching keys, don't fetch more.
+        // This prevents stack overflow from deeply nested async calls.
+        if self.fetching_keys.swap(true, Ordering::SeqCst) {
+            trace!(
+                "Already fetching keys, skipping fetch for {} key tag {}",
+                signer, key_tag
+            );
+            return Err(DnssecError::NoMatchingKey { key_tag });
+        }
+
+        // Try to fetch the DNSKEY RRset
+        trace!("Fetching DNSKEY for {} (need key tag {})", signer, key_tag);
+        let result = async {
+            if let Some(dnskey_response) = self.fetcher.fetch_dnskey(signer).await {
+                // Extract and validate the DNSKEY records
+                if let Some(key) = self
+                    .process_fetched_dnskeys(signer, &dnskey_response, key_tag, algorithm)
+                    .await?
+                {
+                    return Ok(key);
+                }
+            }
+            Err(DnssecError::NoMatchingKey { key_tag })
+        }
+        .await;
+
+        // Clear the fetching flag
+        self.fetching_keys.store(false, Ordering::SeqCst);
+
+        result
+    }
+
+    /// Processes a fetched DNSKEY response, validates the keys, and caches them.
+    ///
+    /// Returns the DNSKEY matching the requested key tag and algorithm if found.
+    async fn process_fetched_dnskeys(
+        &self,
+        zone: &Name,
+        response: &Message,
+        target_key_tag: u16,
+        target_algorithm: u8,
+    ) -> Result<Option<DNSKEY>> {
+        // Extract all DNSKEY records from the response
+        let dnskeys: Vec<DNSKEY> = response
+            .answers()
+            .iter()
+            .filter_map(|r| {
+                if let stria_proto::rdata::RData::DNSKEY(dnskey) = r.rdata() {
+                    Some(dnskey.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if dnskeys.is_empty() {
+            debug!("No DNSKEY records in fetched response for {}", zone);
+            return Ok(None);
+        }
+
+        // Validate the DNSKEY RRset
+        // For the root zone, validate against trust anchors
+        // For other zones, we need to validate against DS records from the parent
+        if zone.is_root() {
+            self.validate_root_dnskeys(&dnskeys, response).await?;
+        } else {
+            self.validate_child_dnskeys(zone, &dnskeys, response)
+                .await?;
+        }
+
+        // Cache the validated keys
+        trace!("Caching {} validated DNSKEYs for {}", dnskeys.len(), zone);
+        self.key_cache.write().insert(zone.clone(), dnskeys.clone());
+
+        // Find and return the requested key
+        for key in &dnskeys {
+            if key.key_tag() == target_key_tag && key.algorithm() == target_algorithm {
+                return Ok(Some(key.clone()));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Validates root zone DNSKEY records against trust anchors.
+    async fn validate_root_dnskeys(&self, dnskeys: &[DNSKEY], response: &Message) -> Result<()> {
+        let root = Name::root();
+        let anchors = self.store.get_anchors(&root);
+
+        if anchors.is_empty() {
+            return Err(DnssecError::NoTrustAnchor {
+                zone: root.to_string(),
+            });
+        }
+
+        // Find a KSK that matches a trust anchor
+        let mut found_valid_ksk = false;
+        for dnskey in dnskeys {
+            if !dnskey.is_sep() {
+                continue; // Skip ZSKs
+            }
+
+            for anchor in &anchors {
+                if anchor.matches_dnskey(dnskey) {
+                    trace!("Root DNSKEY {} matches trust anchor", dnskey.key_tag());
+                    found_valid_ksk = true;
+                    break;
+                }
+            }
+            if found_valid_ksk {
+                break;
+            }
+        }
+
+        if !found_valid_ksk {
+            return Err(DnssecError::ChainOfTrustBroken {
+                zone: root.to_string(),
+                reason: "No DNSKEY matches trust anchor".to_string(),
+            });
+        }
+
+        // Verify the DNSKEY RRset is self-signed by the KSK
+        let dnskey_records: Vec<&ResourceRecord> = response
+            .answers()
+            .iter()
+            .filter(|r| matches!(r.record_type(), Some(RecordType::DNSKEY)))
+            .collect();
+
+        if dnskey_records.is_empty() {
+            return Err(DnssecError::ChainOfTrustBroken {
+                zone: root.to_string(),
+                reason: "No DNSKEY records to verify".to_string(),
+            });
+        }
+
+        // Find RRSIG for DNSKEY
+        let rrsigs = find_rrsigs_for_rrset(response, &root, RecordType::DNSKEY);
+        if rrsigs.is_empty() {
+            return Err(DnssecError::MissingRrsig {
+                name: root.to_string(),
+                rtype: "DNSKEY".to_string(),
+            });
+        }
+
+        // Verify signature with a KSK that matches a trust anchor
+        for rrsig in &rrsigs {
+            // Find the KSK that signed this
+            for dnskey in dnskeys {
+                if dnskey.key_tag() == rrsig.key_tag()
+                    && dnskey.algorithm() == rrsig.algorithm()
+                    && dnskey.is_sep()
+                {
+                    // Check if this KSK matches a trust anchor
+                    let matches_anchor = anchors.iter().any(|a| a.matches_dnskey(dnskey));
+                    if matches_anchor {
+                        // Verify the signature
+                        if self
+                            .verify_signature(&dnskey_records, rrsig, dnskey)
+                            .is_ok()
+                        {
+                            trace!("Root DNSKEY RRset validated with KSK {}", dnskey.key_tag());
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(DnssecError::ChainOfTrustBroken {
+            zone: root.to_string(),
+            reason: "DNSKEY RRset signature verification failed".to_string(),
+        })
+    }
+
+    /// Validates child zone DNSKEY records against DS records from parent.
+    async fn validate_child_dnskeys(
+        &self,
+        zone: &Name,
+        dnskeys: &[DNSKEY],
+        response: &Message,
+    ) -> Result<()> {
+        // Fetch DS records from parent zone
+        let ds_response =
+            self.fetcher
+                .fetch_ds(zone)
+                .await
+                .ok_or_else(|| DnssecError::KeyFetchFailed {
+                    zone: zone.to_string(),
+                    reason: "Failed to fetch DS records".to_string(),
+                })?;
+
+        // Extract DS records
+        let ds_records: Vec<&DS> = ds_response
+            .answers()
+            .iter()
+            .filter_map(|r| {
+                if let stria_proto::rdata::RData::DS(ds) = r.rdata() {
+                    Some(ds)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if ds_records.is_empty() {
+            // No DS records means the zone is unsigned (insecure delegation)
+            debug!("No DS records for {} - zone may be unsigned", zone);
+            return Err(DnssecError::ChainOfTrustBroken {
+                zone: zone.to_string(),
+                reason: "No DS records found (unsigned zone)".to_string(),
+            });
+        }
+
+        // Find a DNSKEY that matches a DS record
+        let mut found_valid_ksk = false;
+        for dnskey in dnskeys {
+            if !dnskey.is_sep() {
+                continue; // Skip ZSKs, only KSKs should match DS
+            }
+
+            for ds in &ds_records {
+                if self.verify_ds(ds, dnskey, zone).is_ok() {
+                    trace!("DNSKEY {} for {} matches DS record", dnskey.key_tag(), zone);
+                    found_valid_ksk = true;
+                    break;
+                }
+            }
+            if found_valid_ksk {
+                break;
+            }
+        }
+
+        if !found_valid_ksk {
+            return Err(DnssecError::ChainOfTrustBroken {
+                zone: zone.to_string(),
+                reason: "No DNSKEY matches DS record".to_string(),
+            });
+        }
+
+        // Verify the DNSKEY RRset is self-signed by the KSK
+        let dnskey_records: Vec<&ResourceRecord> = response
+            .answers()
+            .iter()
+            .filter(|r| matches!(r.record_type(), Some(RecordType::DNSKEY)))
+            .collect();
+
+        if dnskey_records.is_empty() {
+            return Err(DnssecError::ChainOfTrustBroken {
+                zone: zone.to_string(),
+                reason: "No DNSKEY records to verify".to_string(),
+            });
+        }
+
+        // Find RRSIG for DNSKEY
+        let rrsigs = find_rrsigs_for_rrset(response, zone, RecordType::DNSKEY);
+        if rrsigs.is_empty() {
+            return Err(DnssecError::MissingRrsig {
+                name: zone.to_string(),
+                rtype: "DNSKEY".to_string(),
+            });
+        }
+
+        // Verify signature with a KSK that matches a DS
+        for rrsig in &rrsigs {
+            for dnskey in dnskeys {
+                if dnskey.key_tag() == rrsig.key_tag()
+                    && dnskey.algorithm() == rrsig.algorithm()
+                    && dnskey.is_sep()
+                {
+                    // Check if this KSK matches a DS record
+                    let matches_ds = ds_records
+                        .iter()
+                        .any(|ds| self.verify_ds(ds, dnskey, zone).is_ok());
+                    if matches_ds {
+                        // Verify the signature
+                        if self
+                            .verify_signature(&dnskey_records, rrsig, dnskey)
+                            .is_ok()
+                        {
+                            trace!(
+                                "DNSKEY RRset for {} validated with KSK {}",
+                                zone,
+                                dnskey.key_tag()
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(DnssecError::ChainOfTrustBroken {
+            zone: zone.to_string(),
+            reason: "DNSKEY RRset signature verification failed".to_string(),
+        })
+    }
+
+    /// Adds DNSKEY records to the cache.
+    ///
+    /// This can be used to pre-populate the cache with known DNSKEYs.
+    pub fn cache_dnskeys(&self, zone: Name, keys: Vec<DNSKEY>) {
+        self.key_cache.write().insert(zone, keys);
     }
 
     /// Verifies the signature of an RRset.
@@ -1088,12 +1560,7 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
         let algorithm = Algorithm::from_u8(rrsig.algorithm())
             .ok_or(DnssecError::UnsupportedAlgorithm(rrsig.algorithm()))?;
 
-        verify_signature_for_algorithm(
-            algorithm,
-            dnskey.public_key(),
-            &sig_data,
-            rrsig.signature(),
-        )
+        verify_signature_for_algorithm(algorithm, dnskey.public_key(), &sig_data, rrsig.signature())
     }
 
     /// Verifies a DS record against a DNSKEY.
@@ -1311,7 +1778,7 @@ impl<S: TrustAnchorStore> DnssecValidator<S> {
     }
 }
 
-impl Default for DnssecValidator<DefaultTrustAnchorStore> {
+impl Default for DnssecValidator<DefaultTrustAnchorStore, NoOpFetcher> {
     fn default() -> Self {
         Self::new(DefaultTrustAnchorStore::default())
     }
@@ -1516,7 +1983,11 @@ fn build_signature_data(records: &[&ResourceRecord], rrsig: &RRSIG) -> Result<Ve
     data.extend_from_slice(&rrsig.expiration().to_be_bytes());
     data.extend_from_slice(&rrsig.inception().to_be_bytes());
     data.extend_from_slice(&rrsig.key_tag().to_be_bytes());
-    rrsig.signer().write_wire(&mut data);
+
+    // Signer name must be in lowercase canonical form (RFC 4034 Section 3.1.8.1)
+    let mut signer = rrsig.signer().clone();
+    signer.to_lowercase();
+    signer.write_wire(&mut data);
 
     // Canonical RRset data
     // Records must be sorted in canonical order
@@ -1535,10 +2006,12 @@ fn build_signature_data(records: &[&ResourceRecord], rrsig: &RRSIG) -> Result<Ve
             rr_data.extend_from_slice(&r.rclass().to_u16().to_be_bytes());
             rr_data.extend_from_slice(&rrsig.original_ttl().to_be_bytes());
 
-            // RDATA length and RDATA
-            let rdata_len = r.rdata().wire_len() as u16;
+            // RDATA length and RDATA in canonical form (RFC 4034 Section 6.2)
+            // Domain names in RDATA must be lowercased
+            let canonical_rdata = write_canonical_rdata(r.rdata());
+            let rdata_len = canonical_rdata.len() as u16;
             rr_data.extend_from_slice(&rdata_len.to_be_bytes());
-            r.rdata().write_to(&mut rr_data);
+            rr_data.extend_from_slice(&canonical_rdata);
 
             rr_data.to_vec()
         })
@@ -1553,6 +2026,92 @@ fn build_signature_data(records: &[&ResourceRecord], rrsig: &RRSIG) -> Result<Ve
     Ok(data.to_vec())
 }
 
+/// Writes RDATA in canonical form for DNSSEC verification (RFC 4034 Section 6.2).
+///
+/// Domain names embedded in certain RDATA types must be lowercased for DNSSEC signing/verification.
+fn write_canonical_rdata(rdata: &RData) -> Vec<u8> {
+    use stria_proto::rdata::*;
+
+    let mut buf = BytesMut::new();
+
+    match rdata {
+        // Record types with a single domain name that needs lowercasing
+        RData::NS(r) => {
+            let mut name = r.nsdname().clone();
+            name.to_lowercase();
+            name.write_wire(&mut buf);
+        }
+        RData::CNAME(r) => {
+            let mut name = r.target().clone();
+            name.to_lowercase();
+            name.write_wire(&mut buf);
+        }
+        RData::PTR(r) => {
+            let mut name = r.ptrdname().clone();
+            name.to_lowercase();
+            name.write_wire(&mut buf);
+        }
+        RData::DNAME(r) => {
+            let mut name = r.target().clone();
+            name.to_lowercase();
+            name.write_wire(&mut buf);
+        }
+        RData::MX(r) => {
+            buf.extend_from_slice(&r.preference().to_be_bytes());
+            let mut name = r.exchange().clone();
+            name.to_lowercase();
+            name.write_wire(&mut buf);
+        }
+        RData::SOA(r) => {
+            let mut mname = r.mname().clone();
+            mname.to_lowercase();
+            mname.write_wire(&mut buf);
+            let mut rname = r.rname().clone();
+            rname.to_lowercase();
+            rname.write_wire(&mut buf);
+            buf.extend_from_slice(&r.serial().to_be_bytes());
+            buf.extend_from_slice(&r.refresh().to_be_bytes());
+            buf.extend_from_slice(&r.retry().to_be_bytes());
+            buf.extend_from_slice(&r.expire().to_be_bytes());
+            buf.extend_from_slice(&r.minimum().to_be_bytes());
+        }
+        RData::SRV(r) => {
+            buf.extend_from_slice(&r.priority().to_be_bytes());
+            buf.extend_from_slice(&r.weight().to_be_bytes());
+            buf.extend_from_slice(&r.port().to_be_bytes());
+            let mut name = r.target().clone();
+            name.to_lowercase();
+            name.write_wire(&mut buf);
+        }
+        RData::NSEC(r) => {
+            let mut name = r.next_name().clone();
+            name.to_lowercase();
+            name.write_wire(&mut buf);
+            buf.extend_from_slice(r.type_bitmap());
+        }
+        RData::RRSIG(r) => {
+            // RRSIG's signer name needs lowercasing
+            buf.extend_from_slice(&r.type_covered().to_be_bytes());
+            buf.extend_from_slice(&[r.algorithm(), r.labels()]);
+            buf.extend_from_slice(&r.original_ttl().to_be_bytes());
+            buf.extend_from_slice(&r.expiration().to_be_bytes());
+            buf.extend_from_slice(&r.inception().to_be_bytes());
+            buf.extend_from_slice(&r.key_tag().to_be_bytes());
+            let mut signer = r.signer().clone();
+            signer.to_lowercase();
+            signer.write_wire(&mut buf);
+            buf.extend_from_slice(r.signature());
+        }
+        // For all other record types, use the standard wire format
+        // (they don't contain domain names that need canonicalization)
+        _ => {
+            rdata.write_to(&mut buf);
+        }
+    }
+
+    buf.to_vec()
+}
+
 /// Verifies a signature using the specified algorithm.
 fn verify_signature_for_algorithm(
     algorithm: Algorithm,
@@ -1562,9 +2121,21 @@ fn verify_signature_for_algorithm(
 ) -> Result<()> {
     match algorithm {
         #[cfg(feature = "rsa")]
-        Algorithm::RsaSha256 => verify_rsa_signature(public_key, data, signature, &ring::signature::RSA_PKCS1_2048_8192_SHA256),
+        Algorithm::RsaSha256 => verify_rsa_signature(
+            public_key,
+            data,
+            signature,
+            // Use legacy variant to support 1024-bit keys still used by some zones
+            &ring::signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+        ),
         #[cfg(feature = "rsa")]
-        Algorithm::RsaSha512 => verify_rsa_signature(public_key, data, signature, &ring::signature::RSA_PKCS1_2048_8192_SHA512),
+        Algorithm::RsaSha512 => verify_rsa_signature(
+            public_key,
+            data,
+            signature,
+            // Use legacy variant to support 1024-bit keys still used by some zones
+            &ring::signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+        ),
         #[cfg(feature = "ecdsa")]
         Algorithm::EcdsaP256Sha256 => verify_ecdsa_p256_signature(public_key, data, signature),
         #[cfg(feature = "ecdsa")]
@@ -1586,13 +2157,17 @@ fn verify_rsa_signature(
     // Parse the DNSKEY public key format
     // RSA public keys in DNSKEY are stored as: exponent length (1 or 3 bytes) + exponent + modulus
     if public_key.is_empty() {
-        return Err(DnssecError::InvalidPublicKey("empty public key".to_string()));
+        return Err(DnssecError::InvalidPublicKey(
+            "empty public key".to_string(),
+        ));
     }
 
     let exp_len = if public_key[0] == 0 {
         // 3-byte length encoding
         if public_key.len() < 3 {
-            return Err(DnssecError::InvalidPublicKey("truncated exponent length".to_string()));
+            return Err(DnssecError::InvalidPublicKey(
+                "truncated exponent length".to_string(),
+            ));
         }
         u16::from_be_bytes([public_key[1], public_key[2]]) as usize
     } else {
@@ -1600,9 +2175,11 @@ fn verify_rsa_signature(
     };
 
     let exp_offset = if public_key[0] == 0 { 3 } else { 1 };
-    
+
     if public_key.len() < exp_offset + exp_len {
-        return Err(DnssecError::InvalidPublicKey("truncated public key".to_string()));
+        return Err(DnssecError::InvalidPublicKey(
+            "truncated public key".to_string(),
+        ));
     }
 
     let exponent = &public_key[exp_offset..exp_offset + exp_len];
@@ -1623,7 +2200,7 @@ fn verify_rsa_signature(
 fn build_rsa_public_key_der(modulus: &[u8], exponent: &[u8]) -> Result<Vec<u8>> {
     // Simple ASN.1 DER encoding for RSA public key
     // This is a minimal implementation - a production system might use a proper ASN.1 library
-    
+
     fn encode_length(len: usize) -> Vec<u8> {
         if len < 128 {
             vec![len as u8]
@@ -1636,11 +2213,11 @@ fn build_rsa_public_key_der(modulus: &[u8], exponent: &[u8]) -> Result<Vec<u8>> 
 
     fn encode_integer(data: &[u8]) -> Vec<u8> {
         let mut result = vec![0x02]; // INTEGER tag
-        
+
         // Add leading zero if high bit is set (to ensure positive)
         let needs_padding = !data.is_empty() && (data[0] & 0x80) != 0;
         let len = data.len() + if needs_padding { 1 } else { 0 };
-        
+
         result.extend(encode_length(len));
         if needs_padding {
             result.push(0x00);
@@ -1775,9 +2352,9 @@ fn verify_ed25519_signature(public_key: &[u8], data: &[u8], signature: &[u8]) ->
     let verifying_key = VerifyingKey::from_bytes(&public_key_bytes)
         .map_err(|e| DnssecError::InvalidPublicKey(e.to_string()))?;
 
-    let signature_bytes: [u8; 64] = signature
-        .try_into()
-        .map_err(|_| DnssecError::SignatureVerificationFailed("invalid signature length".to_string()))?;
+    let signature_bytes: [u8; 64] = signature.try_into().map_err(|_| {
+        DnssecError::SignatureVerificationFailed("invalid signature length".to_string())
+    })?;
 
     let sig = Signature::from_bytes(&signature_bytes);
 
@@ -1974,7 +2551,7 @@ mod tests {
     fn test_type_bitmap_parsing() {
         // Type bitmap for A(1), NS(2), SOA(6)
         let bitmap = vec![
-            0u8, 2, // Window 0, 2 bytes
+            0u8, 2,    // Window 0, 2 bytes
             0x62, // Types 1, 2, 6
             0x00,
         ];

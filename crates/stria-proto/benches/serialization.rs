@@ -1,6 +1,6 @@
 //! DNS message serialization benchmarks.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 fn serialization_benchmarks(_c: &mut Criterion) {
     // Placeholder for serialization benchmarks

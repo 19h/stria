@@ -28,10 +28,10 @@
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use console::{style, Term};
+use console::{Term, style};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::io::{Read, Write, BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -58,7 +58,12 @@ use std::time::Duration;
 For more information, visit https://github.com/19h/stria")]
 struct Cli {
     /// Control socket path
-    #[arg(short, long, global = true, default_value = "/var/run/stria/control.sock")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        default_value = "/var/run/stria/control.sock"
+    )]
     socket: PathBuf,
 
     /// HTTP control endpoint (overrides socket)
@@ -632,7 +637,11 @@ impl ControlClient {
     }
 
     /// Send a POST request to the control API
-    async fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: Option<B>) -> Result<T> {
+    async fn post<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: Option<B>,
+    ) -> Result<T> {
         self.request("POST", path, body).await
     }
 
@@ -648,7 +657,8 @@ impl ControlClient {
         body: Option<B>,
     ) -> Result<T> {
         if let Some(ref endpoint) = self.http_endpoint {
-            self.http_request(method, &format!("{}{}", endpoint, path), body).await
+            self.http_request(method, &format!("{}{}", endpoint, path), body)
+                .await
         } else if let Some(ref socket) = self.socket_path {
             self.socket_request(method, path, body).await
         } else {
@@ -664,45 +674,51 @@ impl ControlClient {
     ) -> Result<T> {
         // Build HTTP/1.1 request manually for simplicity
         // In production, would use reqwest or similar
-        
+
         let url = url::Url::parse(url).context("Invalid URL")?;
         let host = url.host_str().context("Missing host")?;
         let port = url.port().unwrap_or(80);
-        
+
         let addr = format!("{}:{}", host, port);
         let mut stream = std::net::TcpStream::connect_timeout(
             &addr.parse().context("Invalid address")?,
             self.timeout,
-        ).context("Failed to connect to HTTP endpoint")?;
-        
+        )
+        .context("Failed to connect to HTTP endpoint")?;
+
         stream.set_read_timeout(Some(self.timeout))?;
         stream.set_write_timeout(Some(self.timeout))?;
-        
+
         let body_str = body.map(|b| serde_json::to_string(&b)).transpose()?;
         let content_len = body_str.as_ref().map(|s| s.len()).unwrap_or(0);
-        
+
         let request = if let Some(ref body) = body_str {
             format!(
                 "{} {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                method, url.path(), host, content_len, body
+                method,
+                url.path(),
+                host,
+                content_len,
+                body
             )
         } else {
             format!(
                 "{} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-                method, url.path(), host
+                method,
+                url.path(),
+                host
             )
         };
-        
+
         stream.write_all(request.as_bytes())?;
-        
+
         let mut response = String::new();
         stream.read_to_string(&mut response)?;
-        
+
         // Parse HTTP response
-        let body_start = response.find("\r\n\r\n")
-            .context("Invalid HTTP response")?;
+        let body_start = response.find("\r\n\r\n").context("Invalid HTTP response")?;
         let body = &response[body_start + 4..];
-        
+
         serde_json::from_str(body).context("Failed to parse response")
     }
 
@@ -712,48 +728,49 @@ impl ControlClient {
         path: &str,
         body: Option<B>,
     ) -> Result<T> {
-        let socket_path = self.socket_path.as_ref()
-            .context("Socket path not set")?;
-        
+        let socket_path = self.socket_path.as_ref().context("Socket path not set")?;
+
         let mut stream = UnixStream::connect(socket_path)
             .with_context(|| format!("Failed to connect to {}", socket_path.display()))?;
-        
+
         stream.set_read_timeout(Some(self.timeout))?;
         stream.set_write_timeout(Some(self.timeout))?;
-        
+
         // Send request in simple line-based protocol:
         // METHOD PATH
         // [JSON body if present]
-        // 
+        //
         let body_str = body.map(|b| serde_json::to_string(&b)).transpose()?;
-        
+
         let request = if let Some(ref body) = body_str {
             format!("{} {}\n{}\n", method, path, body)
         } else {
             format!("{} {}\n\n", method, path)
         };
-        
+
         stream.write_all(request.as_bytes())?;
         stream.flush()?;
-        
+
         // Read response
         let mut reader = BufReader::new(stream);
         let mut response = String::new();
         reader.read_line(&mut response)?;
-        
+
         // Response format:
         // STATUS (OK or ERROR)
         // JSON body
         let status_line = response.trim();
-        
+
         let mut json_body = String::new();
         reader.read_to_string(&mut json_body)?;
-        
+
         if status_line.starts_with("ERROR") {
-            let error_msg = status_line.strip_prefix("ERROR ").unwrap_or("Unknown error");
+            let error_msg = status_line
+                .strip_prefix("ERROR ")
+                .unwrap_or("Unknown error");
             bail!("Server error: {}", error_msg);
         }
-        
+
         serde_json::from_str(&json_body)
             .with_context(|| format!("Failed to parse response: {}", json_body))
     }
@@ -791,27 +808,33 @@ fn print_status(status: &StatusResponse, json: bool) {
     println!("  {}  {}", style("Version:").dim(), status.version);
     println!("  {}  {}", style("PID:").dim(), status.pid);
     println!("  {}  {}", style("Workers:").dim(), status.workers);
-    println!("  {}  {}", style("Uptime:").dim(), format_duration(status.uptime_secs));
-    
+    println!(
+        "  {}  {}",
+        style("Uptime:").dim(),
+        format_duration(status.uptime_secs)
+    );
+
     if let Some(ref path) = status.config_path {
         println!("  {}  {}", style("Config:").dim(), path);
     }
-    
+
     println!();
     println!("{}", style("Listeners").cyan().bold());
-    
+
     for listener in &status.listeners {
         let status_icon = if listener.active {
             style("✓").green()
         } else {
             style("✗").red()
         };
-        
-        let conn_info = listener.connections
+
+        let conn_info = listener
+            .connections
             .map(|c| format!(" ({} connections)", c))
             .unwrap_or_default();
-        
-        println!("  {} {} :{} {}{}",
+
+        println!(
+            "  {} {} :{} {}{}",
             status_icon,
             style(&listener.protocol).cyan(),
             listener.port,
@@ -853,51 +876,123 @@ fn print_stats(stats: &StatsResponse, json: bool, category: Option<StatsCategory
 
 fn print_query_stats(stats: &QueryStats) {
     println!("{}", style("Query Statistics").cyan().bold());
-    println!("  {}    {:>12}", style("Total:").dim(), format_number(stats.total));
-    println!("  {}  {:>12} ({}%)", 
+    println!(
+        "  {}    {:>12}",
+        style("Total:").dim(),
+        format_number(stats.total)
+    );
+    println!(
+        "  {}  {:>12} ({}%)",
         style("Success:").dim(),
         format_number(stats.success),
-        format_percentage(stats.success, stats.total));
-    println!("  {}   {:>12} ({}%)", 
+        format_percentage(stats.success, stats.total)
+    );
+    println!(
+        "  {}   {:>12} ({}%)",
         style("Failed:").dim(),
         format_number(stats.failed),
-        format_percentage(stats.failed, stats.total));
-    println!("  {}  {:>12} ({}%)", 
+        format_percentage(stats.failed, stats.total)
+    );
+    println!(
+        "  {}  {:>12} ({}%)",
         style("Blocked:").dim(),
         format_number(stats.blocked),
-        format_percentage(stats.blocked, stats.total));
-    println!("  {}   {:>12} ({}%)", 
+        format_percentage(stats.blocked, stats.total)
+    );
+    println!(
+        "  {}   {:>12} ({}%)",
         style("Cached:").dim(),
         format_number(stats.cached),
-        format_percentage(stats.cached, stats.total));
-    println!("  {} {:>12.2}ms", style("Avg Latency:").dim(), stats.avg_latency_ms);
+        format_percentage(stats.cached, stats.total)
+    );
+    println!(
+        "  {} {:>12.2}ms",
+        style("Avg Latency:").dim(),
+        stats.avg_latency_ms
+    );
     println!("  {}      {:>12.1}", style("QPS:").dim(), stats.qps);
 }
 
 fn print_cache_stats(stats: &CacheStatsResponse) {
     println!("{}", style("Cache Statistics").cyan().bold());
-    println!("  {}  {:>12}", style("Entries:").dim(), format_number(stats.entries as u64));
-    println!("  {} {:>12}", style("Capacity:").dim(), format_number(stats.capacity as u64));
-    println!("  {}   {:>12}", style("Memory:").dim(), format_bytes(stats.memory_bytes));
-    println!("  {}     {:>12}", style("Hits:").dim(), format_number(stats.hits));
-    println!("  {}   {:>12}", style("Misses:").dim(), format_number(stats.misses));
-    println!("  {} {:>12.1}%", style("Hit Rate:").dim(), stats.hit_rate * 100.0);
+    println!(
+        "  {}  {:>12}",
+        style("Entries:").dim(),
+        format_number(stats.entries as u64)
+    );
+    println!(
+        "  {} {:>12}",
+        style("Capacity:").dim(),
+        format_number(stats.capacity as u64)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("Memory:").dim(),
+        format_bytes(stats.memory_bytes)
+    );
+    println!(
+        "  {}     {:>12}",
+        style("Hits:").dim(),
+        format_number(stats.hits)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("Misses:").dim(),
+        format_number(stats.misses)
+    );
+    println!(
+        "  {} {:>12.1}%",
+        style("Hit Rate:").dim(),
+        stats.hit_rate * 100.0
+    );
     if stats.stale_serves > 0 {
-        println!("  {}    {:>12}", style("Stale:").dim(), format_number(stats.stale_serves));
+        println!(
+            "  {}    {:>12}",
+            style("Stale:").dim(),
+            format_number(stats.stale_serves)
+        );
     }
     if stats.prefetches > 0 {
-        println!("  {} {:>12}", style("Prefetches:").dim(), format_number(stats.prefetches));
+        println!(
+            "  {} {:>12}",
+            style("Prefetches:").dim(),
+            format_number(stats.prefetches)
+        );
     }
 }
 
 fn print_block_stats(stats: &BlockStats) {
     println!("{}", style("Blocking Statistics").cyan().bold());
-    println!("  {}   {:>12}", style("Total Rules:").dim(), format_number(stats.total_rules as u64));
-    println!("  {}   {:>12}", style("Exact Match:").dim(), format_number(stats.exact_rules as u64));
-    println!("  {}     {:>12}", style("Patterns:").dim(), format_number(stats.pattern_rules as u64));
-    println!("  {}   {:>12}", style("Blocklists:").dim(), stats.blocklist_count);
-    println!("  {}      {:>12}", style("Blocked:").dim(), format_number(stats.blocked_queries));
-    println!("  {}    {:>12}", style("Allowlisted:").dim(), format_number(stats.allowed_by_whitelist));
+    println!(
+        "  {}   {:>12}",
+        style("Total Rules:").dim(),
+        format_number(stats.total_rules as u64)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("Exact Match:").dim(),
+        format_number(stats.exact_rules as u64)
+    );
+    println!(
+        "  {}     {:>12}",
+        style("Patterns:").dim(),
+        format_number(stats.pattern_rules as u64)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("Blocklists:").dim(),
+        stats.blocklist_count
+    );
+    println!(
+        "  {}      {:>12}",
+        style("Blocked:").dim(),
+        format_number(stats.blocked_queries)
+    );
+    println!(
+        "  {}    {:>12}",
+        style("Allowlisted:").dim(),
+        format_number(stats.allowed_by_whitelist)
+    );
     if let Some(ref last_update) = stats.last_update {
         println!("  {}  {}", style("Last Update:").dim(), last_update);
     }
@@ -905,10 +1000,22 @@ fn print_block_stats(stats: &BlockStats) {
 
 fn print_upstream_stats(stats: &UpstreamStats) {
     println!("{}", style("Upstream Statistics").cyan().bold());
-    println!("  {}  {:>12}", style("Total Queries:").dim(), format_number(stats.total_queries));
-    println!("  {}    {:>12}", style("Failures:").dim(), format_number(stats.total_failures));
-    println!("  {} {:>12.2}ms", style("Avg Latency:").dim(), stats.avg_latency_ms);
-    
+    println!(
+        "  {}  {:>12}",
+        style("Total Queries:").dim(),
+        format_number(stats.total_queries)
+    );
+    println!(
+        "  {}    {:>12}",
+        style("Failures:").dim(),
+        format_number(stats.total_failures)
+    );
+    println!(
+        "  {} {:>12.2}ms",
+        style("Avg Latency:").dim(),
+        stats.avg_latency_ms
+    );
+
     println!();
     println!("  {}", style("Servers:").dim());
     for server in &stats.servers {
@@ -917,7 +1024,8 @@ fn print_upstream_stats(stats: &UpstreamStats) {
         } else {
             style("●").red()
         };
-        println!("    {} {} - {} queries, {:.1}ms avg",
+        println!(
+            "    {} {} - {} queries, {:.1}ms avg",
             health_icon,
             server.address,
             format_number(server.queries),
@@ -928,13 +1036,37 @@ fn print_upstream_stats(stats: &UpstreamStats) {
 
 fn print_protocol_stats(stats: &ProtocolStats) {
     println!("{}", style("Protocol Statistics").cyan().bold());
-    println!("  {}   {:>12}", style("UDP:").dim(), format_number(stats.udp_queries));
-    println!("  {}   {:>12}", style("TCP:").dim(), format_number(stats.tcp_queries));
-    println!("  {}   {:>12}", style("DoT:").dim(), format_number(stats.dot_queries));
-    println!("  {}   {:>12}", style("DoH:").dim(), format_number(stats.doh_queries));
-    println!("  {}   {:>12}", style("DoQ:").dim(), format_number(stats.doq_queries));
+    println!(
+        "  {}   {:>12}",
+        style("UDP:").dim(),
+        format_number(stats.udp_queries)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("TCP:").dim(),
+        format_number(stats.tcp_queries)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("DoT:").dim(),
+        format_number(stats.dot_queries)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("DoH:").dim(),
+        format_number(stats.doh_queries)
+    );
+    println!(
+        "  {}   {:>12}",
+        style("DoQ:").dim(),
+        format_number(stats.doq_queries)
+    );
     println!();
-    println!("  {} {:>12}", style("TCP Conns:").dim(), format_number(stats.tcp_connections));
+    println!(
+        "  {} {:>12}",
+        style("TCP Conns:").dim(),
+        format_number(stats.tcp_connections)
+    );
 }
 
 fn print_cache_lookup(lookup: &CacheLookupResponse, json: bool) {
@@ -954,23 +1086,26 @@ fn print_cache_lookup(lookup: &CacheLookupResponse, json: bool) {
         } else {
             String::new()
         };
-        
-        println!("{} {} {}{}", 
+
+        println!(
+            "{} {} {}{}",
             style("Cache entry:").green().bold(),
             entry.name,
             entry.record_type,
             stale_marker
         );
         println!("  {}  {}", style("Created:").dim(), entry.created_at);
-        println!("  {}  {}s remaining", style("TTL:").dim(), entry.ttl_remaining);
+        println!(
+            "  {}  {}s remaining",
+            style("TTL:").dim(),
+            entry.ttl_remaining
+        );
         println!();
-        
+
         for record in &entry.records {
-            println!("  {} {} IN {} {}", 
-                entry.name,
-                record.ttl,
-                entry.record_type,
-                record.rdata
+            println!(
+                "  {} {} IN {} {}",
+                entry.name, record.ttl, entry.record_type, record.rdata
             );
         }
     }
@@ -989,7 +1124,7 @@ fn print_block_rules(rules: &[BlockRuleInfo], json: bool) {
 
     println!("{}", style("Custom Block Rules").cyan().bold());
     println!();
-    
+
     for rule in rules {
         let type_indicator = match rule.rule_type.as_str() {
             "exact" => "",
@@ -997,17 +1132,13 @@ fn print_block_rules(rules: &[BlockRuleInfo], json: bool) {
             "pattern" => "~",
             _ => "?",
         };
-        
-        println!("  {} {}{}",
-            style("●").red(),
-            type_indicator,
-            rule.domain
-        );
-        
+
+        println!("  {} {}{}", style("●").red(), type_indicator, rule.domain);
+
         if let Some(ref comment) = rule.comment {
             println!("    {}", style(comment).dim());
         }
-        
+
         if let Some(ref source) = rule.source {
             println!("    {} {}", style("from:").dim(), source);
         }
@@ -1041,7 +1172,7 @@ fn print_blocklists(lists: &[BlocklistInfo], json: bool) {
 
     println!("{}", style("Blocklists").cyan().bold());
     println!();
-    
+
     for list in lists {
         let status_icon = match (list.enabled, list.status.as_str()) {
             (false, _) => style("○").dim(),
@@ -1049,17 +1180,22 @@ fn print_blocklists(lists: &[BlocklistInfo], json: bool) {
             (true, "updating") => style("●").yellow(),
             (true, _) => style("●").red(),
         };
-        
+
         let enabled_text = if list.enabled { "" } else { " (disabled)" };
-        
-        println!("  {} {}{}",
+
+        println!(
+            "  {} {}{}",
             status_icon,
             style(&list.name).bold(),
             style(enabled_text).dim()
         );
-        println!("    {} {}", style("Rules:").dim(), format_number(list.rule_count as u64));
+        println!(
+            "    {} {}",
+            style("Rules:").dim(),
+            format_number(list.rule_count as u64)
+        );
         println!("    {} {}", style("Format:").dim(), list.format);
-        
+
         if let Some(ref updated) = list.last_updated {
             println!("    {} {}", style("Updated:").dim(), updated);
         }
@@ -1074,45 +1210,48 @@ fn print_query_result(result: &QueryResponse, json: bool, timing: bool) {
 
     // Header
     println!();
-    
+
     if result.blocked {
         println!("{} Query blocked", style(";;").red());
         if let Some(ref by) = result.blocked_by {
             println!("{} Blocked by: {}", style(";;").dim(), by);
         }
     } else {
-        println!("{} {} query for {}", 
+        println!(
+            "{} {} query for {}",
             style(";;").dim(),
             result.record_type,
             result.domain
         );
     }
-    
+
     if result.cached {
         println!("{} Served from cache", style(";;").dim());
     }
-    
+
     println!();
-    
+
     // Answer section
     if result.answers.is_empty() {
         println!("{} No answer", style(";;").yellow());
     } else {
         println!("{}", style(";; ANSWER SECTION:").dim());
         for answer in &result.answers {
-            println!("{}\t{}\tIN\t{}\t{}",
-                answer.name,
-                answer.ttl,
-                answer.record_type,
-                answer.rdata
+            println!(
+                "{}\t{}\tIN\t{}\t{}",
+                answer.name, answer.ttl, answer.record_type, answer.rdata
             );
         }
     }
-    
+
     // Timing
     if timing {
         println!();
-        println!("{} Query time: {:.2}ms", style(";;").dim(), result.latency_ms);
+        println!(
+            "{} Query time: {:.2}ms",
+            style(";;").dim(),
+            result.latency_ms
+        );
     }
 }
 
@@ -1130,12 +1269,15 @@ fn print_log_entries(entries: &[LogEntry], json: bool) {
             "error" | "servfail" => style(&entry.status).red(),
             _ => style(&entry.status).dim(),
         };
-        
-        let blocked_info = entry.blocked_by.as_ref()
+
+        let blocked_info = entry
+            .blocked_by
+            .as_ref()
             .map(|b| format!(" [{}]", b))
             .unwrap_or_default();
-        
-        println!("{} {} {} {} {} {:.1}ms{}",
+
+        println!(
+            "{} {} {} {} {} {:.1}ms{}",
             style(&entry.timestamp).dim(),
             entry.client,
             entry.domain,
@@ -1179,7 +1321,8 @@ fn format_number(n: u64) -> String {
         // Use thousands separator for readability
         let s = n.to_string();
         let bytes: Vec<_> = s.bytes().rev().collect();
-        let chunks: Vec<_> = bytes.chunks(3)
+        let chunks: Vec<_> = bytes
+            .chunks(3)
             .map(|chunk| chunk.iter().rev().map(|&b| b as char).collect::<String>())
             .collect();
         chunks.into_iter().rev().collect::<Vec<_>>().join(",")
@@ -1231,7 +1374,10 @@ async fn handle_stats(
             let stats: StatsResponse = client.get("/v1/stats").await?;
             print_stats(&stats, json, category.clone());
             println!();
-            println!("{}", style(format!("Refreshing every {}s (Ctrl+C to stop)", interval)).dim());
+            println!(
+                "{}",
+                style(format!("Refreshing every {}s (Ctrl+C to stop)", interval)).dim()
+            );
             tokio::time::sleep(Duration::from_secs(interval)).await;
         }
     } else {
@@ -1259,7 +1405,7 @@ async fn handle_reload(
         pb.set_style(
             ProgressStyle::default_spinner()
                 .template("{spinner:.green} {msg}")
-                .unwrap()
+                .unwrap(),
         );
         let msg = match target {
             Some(ReloadTarget::Blocklists) => "Reloading blocklists...",
@@ -1330,7 +1476,7 @@ async fn handle_cache(
                 pb.set_style(
                     ProgressStyle::default_spinner()
                         .template("{spinner:.green} {msg}")
-                        .unwrap()
+                        .unwrap(),
                 );
                 pb.set_message("Flushing cache...");
                 pb.enable_steady_tick(Duration::from_millis(100));
@@ -1347,7 +1493,10 @@ async fn handle_cache(
             let response: FlushResponse = client.post(&path, None::<()>).await?;
 
             if let Some(pb) = pb {
-                pb.finish_with_message(format!("Flushed {} entries", format_number(response.flushed)));
+                pb.finish_with_message(format!(
+                    "Flushed {} entries",
+                    format_number(response.flushed)
+                ));
             }
 
             if json {
@@ -1355,7 +1504,10 @@ async fn handle_cache(
             }
         }
 
-        CacheCommands::Lookup { domain, record_type } => {
+        CacheCommands::Lookup {
+            domain,
+            record_type,
+        } => {
             let path = format!(
                 "/v1/cache/lookup?domain={}&type={}",
                 urlencoding::encode(&domain),
@@ -1377,11 +1529,7 @@ async fn handle_cache(
     Ok(())
 }
 
-async fn handle_block(
-    client: &ControlClient,
-    json: bool,
-    action: BlockCommands,
-) -> Result<()> {
+async fn handle_block(client: &ControlClient, json: bool, action: BlockCommands) -> Result<()> {
     match action {
         BlockCommands::List { filter } => {
             let path = match filter {
@@ -1392,7 +1540,11 @@ async fn handle_block(
             print_block_rules(&rules, json);
         }
 
-        BlockCommands::Add { domain, pattern, comment } => {
+        BlockCommands::Add {
+            domain,
+            pattern,
+            comment,
+        } => {
             #[derive(Serialize)]
             struct AddBlockRequest {
                 domain: String,
@@ -1400,7 +1552,11 @@ async fn handle_block(
                 comment: Option<String>,
             }
 
-            let body = AddBlockRequest { domain: domain.clone(), pattern, comment };
+            let body = AddBlockRequest {
+                domain: domain.clone(),
+                pattern,
+                comment,
+            };
             let response: ApiResponse<()> = client.post("/v1/block/rules", Some(body)).await?;
 
             if json {
@@ -1436,11 +1592,7 @@ async fn handle_block(
     Ok(())
 }
 
-async fn handle_allow(
-    client: &ControlClient,
-    json: bool,
-    action: AllowCommands,
-) -> Result<()> {
+async fn handle_allow(client: &ControlClient, json: bool, action: AllowCommands) -> Result<()> {
     match action {
         AllowCommands::List { filter } => {
             let path = match filter {
@@ -1448,7 +1600,7 @@ async fn handle_allow(
                 None => "/v1/allow/rules".to_string(),
             };
             let rules: Vec<BlockRuleInfo> = client.get(&path).await?;
-            
+
             if json {
                 println!("{}", serde_json::to_string_pretty(&rules).unwrap());
             } else if rules.is_empty() {
@@ -1471,7 +1623,10 @@ async fn handle_allow(
                 comment: Option<String>,
             }
 
-            let body = AddAllowRequest { domain: domain.clone(), comment };
+            let body = AddAllowRequest {
+                domain: domain.clone(),
+                comment,
+            };
             let response: ApiResponse<()> = client.post("/v1/allow/rules", Some(body)).await?;
 
             if json {
@@ -1524,7 +1679,7 @@ async fn handle_blocklist(
                 pb.set_style(
                     ProgressStyle::default_spinner()
                         .template("{spinner:.green} {msg}")
-                        .unwrap()
+                        .unwrap(),
                 );
                 let msg = match &name {
                     Some(n) => format!("Updating {}...", n),
@@ -1569,9 +1724,20 @@ async fn handle_blocklist(
                 println!();
                 println!("  {} {}", style("Source:").dim(), info.source);
                 println!("  {} {}", style("Format:").dim(), info.format);
-                println!("  {} {}", style("Enabled:").dim(), 
-                    if info.enabled { style("yes").green() } else { style("no").red() });
-                println!("  {} {}", style("Rules:").dim(), format_number(info.rule_count as u64));
+                println!(
+                    "  {} {}",
+                    style("Enabled:").dim(),
+                    if info.enabled {
+                        style("yes").green()
+                    } else {
+                        style("no").red()
+                    }
+                );
+                println!(
+                    "  {} {}",
+                    style("Rules:").dim(),
+                    format_number(info.rule_count as u64)
+                );
                 println!("  {} {}", style("Status:").dim(), info.status);
                 if let Some(ref updated) = info.last_updated {
                     println!("  {} {}", style("Last Updated:").dim(), updated);
@@ -1652,10 +1818,10 @@ async fn handle_log(
         // For follow mode, we'd want to use SSE or websockets
         // For now, poll periodically
         let mut last_timestamp = String::new();
-        
+
         loop {
             let entries: Vec<LogEntry> = client.get(&path).await?;
-            
+
             for entry in &entries {
                 if entry.timestamp > last_timestamp {
                     if json {
@@ -1666,7 +1832,7 @@ async fn handle_log(
                     last_timestamp = entry.timestamp.clone();
                 }
             }
-            
+
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     } else {
@@ -1700,7 +1866,9 @@ async fn handle_shutdown(
         timeout_secs: u64,
     }
 
-    let body = ShutdownRequest { timeout_secs: timeout };
+    let body = ShutdownRequest {
+        timeout_secs: timeout,
+    };
     let response: ApiResponse<()> = client.post("/v1/shutdown", Some(body)).await?;
 
     if json {
@@ -1731,10 +1899,12 @@ async fn main() -> Result<()> {
         let candidates = [
             PathBuf::from("/var/run/stria/control.sock"),
             PathBuf::from("/run/stria/control.sock"),
-            dirs::runtime_dir().map(|p| p.join("stria/control.sock")).unwrap_or_default(),
+            dirs::runtime_dir()
+                .map(|p| p.join("stria/control.sock"))
+                .unwrap_or_default(),
             PathBuf::from("/tmp/stria.sock"),
         ];
-        
+
         candidates.into_iter().find(|p| p.exists())
     };
 
@@ -1754,7 +1924,10 @@ async fn main() -> Result<()> {
             });
             eprintln!("{}", error);
         } else {
-            eprintln!("{} Cannot connect to Stria daemon", style("Error:").red().bold());
+            eprintln!(
+                "{} Cannot connect to Stria daemon",
+                style("Error:").red().bold()
+            );
             eprintln!();
             eprintln!("  Socket: {}", cli.socket.display());
             eprintln!();
@@ -1768,39 +1941,37 @@ async fn main() -> Result<()> {
 
     let result = match cli.command {
         Commands::Status => handle_status(&client, cli.json).await,
-        
+
         Commands::Stats { category, watch } => {
             handle_stats(&client, cli.json, category, watch).await
         }
-        
-        Commands::Reload { what } => {
-            handle_reload(&client, cli.json, cli.quiet, what).await
-        }
-        
-        Commands::Cache { action } => {
-            handle_cache(&client, cli.json, cli.quiet, action).await
-        }
-        
-        Commands::Block { action } => {
-            handle_block(&client, cli.json, action).await
-        }
-        
-        Commands::Allow { action } => {
-            handle_allow(&client, cli.json, action).await
-        }
-        
+
+        Commands::Reload { what } => handle_reload(&client, cli.json, cli.quiet, what).await,
+
+        Commands::Cache { action } => handle_cache(&client, cli.json, cli.quiet, action).await,
+
+        Commands::Block { action } => handle_block(&client, cli.json, action).await,
+
+        Commands::Allow { action } => handle_allow(&client, cli.json, action).await,
+
         Commands::Blocklist { action } => {
             handle_blocklist(&client, cli.json, cli.quiet, action).await
         }
-        
-        Commands::Query { domain, record_type, class, timing } => {
-            handle_query(&client, cli.json, domain, record_type, class, timing).await
-        }
-        
-        Commands::Log { follow, lines, blocked, domain } => {
-            handle_log(&client, cli.json, follow, lines, blocked, domain).await
-        }
-        
+
+        Commands::Query {
+            domain,
+            record_type,
+            class,
+            timing,
+        } => handle_query(&client, cli.json, domain, record_type, class, timing).await,
+
+        Commands::Log {
+            follow,
+            lines,
+            blocked,
+            domain,
+        } => handle_log(&client, cli.json, follow, lines, blocked, domain).await,
+
         Commands::Shutdown { force, timeout } => {
             handle_shutdown(&client, cli.json, force, timeout).await
         }
@@ -1872,58 +2043,58 @@ mod tests {
         Cli::try_parse_from(["stria-ctl", "stats"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "stats", "queries"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "stats", "cache"]).unwrap();
-        
+
         // With global flags
         let cli = Cli::try_parse_from(["stria-ctl", "--json", "status"]).unwrap();
         assert!(cli.json);
-        
+
         let cli = Cli::try_parse_from(["stria-ctl", "-q", "reload"]).unwrap();
         assert!(cli.quiet);
-        
+
         // Socket override
         let cli = Cli::try_parse_from(["stria-ctl", "-s", "/tmp/test.sock", "status"]).unwrap();
         assert_eq!(cli.socket, PathBuf::from("/tmp/test.sock"));
-        
+
         // Cache commands
         Cli::try_parse_from(["stria-ctl", "cache", "flush"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "cache", "flush", "*.ads.*"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "cache", "flush", "--force"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "cache", "lookup", "example.com"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "cache", "stats"]).unwrap();
-        
+
         // Block commands
         Cli::try_parse_from(["stria-ctl", "block", "list"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "block", "add", "ads.example.com"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "block", "add", "--pattern", "*.ads.*"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "block", "remove", "ads.example.com"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "block", "test", "suspicious.com"]).unwrap();
-        
+
         // Allow commands
         Cli::try_parse_from(["stria-ctl", "allow", "list"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "allow", "add", "example.com"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "allow", "remove", "example.com"]).unwrap();
-        
+
         // Blocklist commands
         Cli::try_parse_from(["stria-ctl", "blocklist", "list"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "blocklist", "update"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "blocklist", "update", "oisd"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "blocklist", "info", "oisd"]).unwrap();
-        
+
         // Query command
         Cli::try_parse_from(["stria-ctl", "query", "example.com"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "query", "example.com", "AAAA"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "query", "--timing", "example.com"]).unwrap();
-        
+
         // Log command
         Cli::try_parse_from(["stria-ctl", "log"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "log", "--follow"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "log", "-n", "100"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "log", "--blocked"]).unwrap();
-        
+
         // Reload commands
         Cli::try_parse_from(["stria-ctl", "reload"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "reload", "blocklists"]).unwrap();
-        
+
         // Shutdown
         Cli::try_parse_from(["stria-ctl", "shutdown"]).unwrap();
         Cli::try_parse_from(["stria-ctl", "shutdown", "--force"]).unwrap();

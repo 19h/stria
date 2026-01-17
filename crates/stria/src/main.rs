@@ -5,24 +5,31 @@
 
 use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
-use stria_cache::{CacheConfig, DnsCache};
-use stria_config::Config;
-use stria_filter::{FilterEngine, FilterEngineConfig, FilterAction, Blocklist, BlocklistFormat, BlocklistSource};
-use stria_metrics::tracing_setup::{init_tracing, LogConfig, LogFormat};
-use stria_proto::{Message, Question, ResponseCode, RecordType, ResourceRecord};
-use stria_resolver::{Forwarder, RecursiveConfig, RecursiveResolver, Resolver, ResolverConfig as ResolverCrateConfig, Upstream, UpstreamConfig, UpstreamProtocol};
-use stria_server::{DnsServer, QueryContext, QueryHandler, ServerConfig, TcpConfig, UdpConfig};
-use stria_server::control::{ControlServer, ControlState, ListenerStatus, BlocklistInfo, QueryLogEntry};
-use stria_server::stats::ServerStats;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use console::style;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use stria_cache::{CacheConfig, DnsCache};
+use stria_config::Config;
+use stria_filter::{
+    Blocklist, BlocklistFormat, BlocklistSource, FilterAction, FilterEngine, FilterEngineConfig,
+};
+use stria_metrics::tracing_setup::{LogConfig, LogFormat, init_tracing};
+use stria_proto::{Message, Question, RecordType, ResourceRecord, ResponseCode};
+use stria_resolver::{
+    Forwarder, RecursiveConfig, RecursiveResolver, Resolver, ResolverConfig as ResolverCrateConfig,
+    Upstream, UpstreamConfig, UpstreamProtocol,
+};
+use stria_server::control::{
+    BlocklistInfo, ControlServer, ControlState, ListenerStatus, QueryLogEntry,
+};
+use stria_server::stats::ServerStats;
+use stria_server::{DnsServer, QueryContext, QueryHandler, ServerConfig, TcpConfig, UdpConfig};
 use tokio::signal;
 use tokio::sync::{broadcast, watch};
-use tracing::{debug, error, info, warn, Level};
+use tracing::{Level, debug, error, info, warn};
 
 /// Stria DNS Server - Modern, fast, and secure DNS resolution
 #[derive(Parser, Debug)]
@@ -141,15 +148,22 @@ fn print_banner(config: &Config, quiet: bool) {
     }
 
     let version = env!("CARGO_PKG_VERSION");
-    
+
     println!();
-    println!("  {} {}", style("Stria DNS Server").cyan().bold(), style(format!("v{}", version)).dim());
-    println!("  {}", style("Modern, fast, and secure DNS resolution").dim());
+    println!(
+        "  {} {}",
+        style("Stria DNS Server").cyan().bold(),
+        style(format!("v{}", version)).dim()
+    );
+    println!(
+        "  {}",
+        style("Modern, fast, and secure DNS resolution").dim()
+    );
     println!();
-    
+
     // Server info
     println!("  {} {}", style("Server:").green(), config.server.name);
-    
+
     // Listeners
     let mut listeners = Vec::new();
     if !config.listeners.udp.is_empty() {
@@ -168,7 +182,7 @@ fn print_banner(config: &Config, quiet: bool) {
         listeners.push(format!("DoQ({})", config.listeners.doq.len()));
     }
     println!("  {} {}", style("Listeners:").green(), listeners.join(", "));
-    
+
     // Resolver mode
     let mode = match config.resolver.mode {
         stria_config::resolver::ResolverMode::Recursive => "Recursive",
@@ -176,7 +190,7 @@ fn print_banner(config: &Config, quiet: bool) {
         stria_config::resolver::ResolverMode::Authoritative => "Authoritative",
     };
     println!("  {} {}", style("Resolver:").green(), mode);
-    
+
     // Features
     let mut features = Vec::new();
     if config.cache.enabled {
@@ -192,7 +206,7 @@ fn print_banner(config: &Config, quiet: bool) {
         features.push("Metrics");
     }
     println!("  {} {}", style("Features:").green(), features.join(", "));
-    
+
     println!();
 }
 
@@ -209,39 +223,39 @@ impl CacheProvider for DnsCacheProvider {
     fn len(&self) -> usize {
         self.0.len()
     }
-    
+
     fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
-    
+
     fn clear(&self) {
         self.0.clear()
     }
-    
+
     fn hits(&self) -> u64 {
         self.0.stats().hits()
     }
-    
+
     fn misses(&self) -> u64 {
         self.0.stats().misses()
     }
-    
+
     fn hit_rate(&self) -> f64 {
         self.0.stats().hit_rate()
     }
-    
+
     fn stale_hits(&self) -> u64 {
         self.0.stats().stale_hits()
     }
-    
+
     fn prefetches(&self) -> u64 {
         self.0.stats().prefetches()
     }
-    
+
     fn capacity(&self) -> usize {
         100_000 // TODO: Get from config
     }
-    
+
     fn memory_bytes(&self) -> usize {
         // Estimate: ~200 bytes per entry
         self.0.len() * 200
@@ -255,23 +269,23 @@ impl FilterProvider for FilterEngineProvider {
     fn rule_count(&self) -> usize {
         self.0.rule_count()
     }
-    
+
     fn blocklist_count(&self) -> usize {
         self.0.blocklist_count()
     }
-    
+
     fn queries_blocked(&self) -> u64 {
         self.0.stats().queries_blocked
     }
-    
+
     fn queries_allowed(&self) -> u64 {
         self.0.stats().queries_allowed
     }
-    
+
     fn block_rate(&self) -> f64 {
         self.0.stats().block_rate()
     }
-    
+
     fn test_domain(&self, domain: &str) -> FilterTestResult {
         use std::str::FromStr;
         if let Ok(name) = stria_proto::Name::from_str(domain) {
@@ -289,15 +303,14 @@ impl FilterProvider for FilterEngineProvider {
             }
         }
     }
-    
+
     fn clear_cache(&self) {
         self.0.clear_cache()
     }
 
     fn add_block_rule(&self, domain: &str) {
-        use stria_filter::{Rule, RuleType, FilterAction};
-        let rule = Rule::new(domain, RuleType::Exact, FilterAction::Block)
-            .with_source("custom");
+        use stria_filter::{FilterAction, Rule, RuleType};
+        let rule = Rule::new(domain, RuleType::Exact, FilterAction::Block).with_source("custom");
         if let Err(e) = self.0.add_rule(rule) {
             warn!(domain = %domain, error = %e, "Failed to add block rule");
         }
@@ -312,9 +325,8 @@ impl FilterProvider for FilterEngineProvider {
     }
 
     fn add_allow_rule(&self, domain: &str) {
-        use stria_filter::{Rule, RuleType, FilterAction};
-        let rule = Rule::new(domain, RuleType::Exact, FilterAction::Allow)
-            .with_source("custom");
+        use stria_filter::{FilterAction, Rule, RuleType};
+        let rule = Rule::new(domain, RuleType::Exact, FilterAction::Allow).with_source("custom");
         if let Err(e) = self.0.add_rule(rule) {
             warn!(domain = %domain, error = %e, "Failed to add allow rule");
         }
@@ -364,7 +376,7 @@ impl QueryHandler for StriaHandler {
     async fn handle(&self, query: Message, context: QueryContext) -> Message {
         let config = self.config.load();
         let start_time = std::time::Instant::now();
-        
+
         // Get the question
         let question = match query.questions().first() {
             Some(q) => q.clone(),
@@ -376,7 +388,8 @@ impl QueryHandler for StriaHandler {
         };
 
         // Record query metrics
-        let qtype = question.record_type()
+        let qtype = question
+            .record_type()
             .map(|t| t.to_string())
             .unwrap_or_else(|| question.qtype.to_string());
         stria_metrics::metrics().record_query(context.protocol.name(), &qtype);
@@ -387,12 +400,12 @@ impl QueryHandler for StriaHandler {
         if let Some(ref filter) = self.filter {
             let name = &question.qname;
             let result = filter.check(name);
-            
+
             if result.is_blocked() {
                 _blocked = true;
                 _blocked_by = result.blocklist_name.as_ref().map(|s| s.to_string());
                 stria_metrics::metrics().record_blocked("filter");
-                
+
                 // Log to query log
                 if let Some(ref ctl_state) = self.control_state {
                     ctl_state.log_query(QueryLogEntry {
@@ -408,7 +421,7 @@ impl QueryHandler for StriaHandler {
                         upstream: None,
                     });
                 }
-                
+
                 // Return blocked response (NXDOMAIN or custom IP based on action)
                 let mut response = Message::response_from(&query);
                 match result.action {
@@ -443,7 +456,7 @@ impl QueryHandler for StriaHandler {
                         // Should not reach here since is_blocked() would be false
                     }
                 }
-                
+
                 stria_metrics::metrics().record_latency(context.protocol.name(), context.elapsed());
                 return response;
             }
@@ -453,14 +466,14 @@ impl QueryHandler for StriaHandler {
         let cache_key = stria_cache::CacheKey::from_question(&question);
         if let Some(result) = self.cache.lookup(&cache_key).await {
             stria_metrics::metrics().record_cache_hit();
-            
+
             // Build response from cache
             let mut response = Message::response_from(&query);
             response.set_rcode(result.entry.rcode());
             for record in result.entry.records() {
                 response.add_answer(record.clone());
             }
-            
+
             // Log to query log
             if let Some(ref ctl_state) = self.control_state {
                 ctl_state.log_query(QueryLogEntry {
@@ -476,7 +489,7 @@ impl QueryHandler for StriaHandler {
                     upstream: None,
                 });
             }
-            
+
             // Trigger prefetch if needed
             if result.should_prefetch {
                 let resolver = self.resolver.clone();
@@ -489,10 +502,10 @@ impl QueryHandler for StriaHandler {
                     }
                 });
             }
-            
+
             // Record latency
             stria_metrics::metrics().record_latency(context.protocol.name(), context.elapsed());
-            
+
             return response;
         }
 
@@ -503,14 +516,14 @@ impl QueryHandler for StriaHandler {
             Ok(mut resp) => {
                 // Update response ID to match query
                 resp.set_id(query.id());
-                
+
                 // Cache the response
                 if resp.is_success() {
                     self.cache.cache_response(&question, &resp).await;
                 } else if resp.is_nxdomain() || resp.is_nodata() {
                     self.cache.cache_negative(&question, &resp).await;
                 }
-                
+
                 // Log to query log
                 if let Some(ref ctl_state) = self.control_state {
                     ctl_state.log_query(QueryLogEntry {
@@ -526,20 +539,20 @@ impl QueryHandler for StriaHandler {
                         upstream: Some("upstream".to_string()), // TODO: track actual upstream
                     });
                 }
-                
+
                 // TODO: DNSSEC validation
                 // if let Some(ref dnssec) = self.dnssec {
                 //     if let Err(e) = dnssec.validate(&resp) {
                 //         // Return SERVFAIL with EDE
                 //     }
                 // }
-                
+
                 resp
             }
             Err(e) => {
                 warn!(error = %e, question = %question, "Resolution failed");
                 stria_metrics::metrics().record_error("resolution_failed");
-                
+
                 let mut response = Message::response_from(&query);
                 response.set_rcode(ResponseCode::ServFail);
                 response
@@ -580,7 +593,7 @@ fn build_resolver(config: &Config, cache: Arc<DnsCache>) -> Arc<dyn Resolver> {
                         stria_config::resolver::UpstreamProtocol::Doh => UpstreamProtocol::Doh,
                         stria_config::resolver::UpstreamProtocol::Doq => UpstreamProtocol::Doq,
                     };
-                    
+
                     Arc::new(Upstream::new(UpstreamConfig {
                         address: u.address,
                         protocol,
@@ -608,11 +621,12 @@ fn build_resolver(config: &Config, cache: Arc<DnsCache>) -> Arc<dyn Resolver> {
                 negative_cache_ttl: Duration::from_secs(config.cache.negative_ttl as u64),
                 enable_0x20: config.resolver.enable_0x20,
             };
-            
-            info!("Initializing recursive resolver with QNAME minimization={}, DNSSEC={}",
-                  recursive_config.enable_qname_minimization,
-                  recursive_config.enable_dnssec);
-            
+
+            info!(
+                "Initializing recursive resolver with QNAME minimization={}, DNSSEC={}",
+                recursive_config.enable_qname_minimization, recursive_config.enable_dnssec
+            );
+
             Arc::new(RecursiveResolver::with_config(recursive_config, cache))
         }
         stria_config::resolver::ResolverMode::Authoritative => {
@@ -682,7 +696,9 @@ async fn build_filter(config: &Config) -> Option<Arc<FilterEngine>> {
             _ => BlocklistFormat::Domains, // Default to domains format
         };
 
-        let source = if blocklist_config.url.starts_with("http://") || blocklist_config.url.starts_with("https://") {
+        let source = if blocklist_config.url.starts_with("http://")
+            || blocklist_config.url.starts_with("https://")
+        {
             BlocklistSource::Url(blocklist_config.url.clone())
         } else {
             BlocklistSource::File(PathBuf::from(&blocklist_config.url))
@@ -739,11 +755,22 @@ fn build_server_config(config: &Config) -> ServerConfig {
     } else {
         Some(UdpConfig {
             listen: config.listeners.udp.iter().map(|l| l.address).collect(),
-            reuseport: config.listeners.udp.first().map(|l| l.reuseport).unwrap_or(true),
-            recv_buffer: config.listeners.udp.first()
+            reuseport: config
+                .listeners
+                .udp
+                .first()
+                .map(|l| l.reuseport)
+                .unwrap_or(true),
+            recv_buffer: config
+                .listeners
+                .udp
+                .first()
                 .and_then(|l| l.recv_buffer)
                 .unwrap_or(4 * 1024 * 1024),
-            send_buffer: config.listeners.udp.first()
+            send_buffer: config
+                .listeners
+                .udp
+                .first()
                 .and_then(|l| l.send_buffer)
                 .unwrap_or(4 * 1024 * 1024),
         })
@@ -754,12 +781,27 @@ fn build_server_config(config: &Config) -> ServerConfig {
     } else {
         Some(TcpConfig {
             listen: config.listeners.tcp.iter().map(|l| l.address).collect(),
-            backlog: config.listeners.tcp.first().map(|l| l.backlog).unwrap_or(1024),
+            backlog: config
+                .listeners
+                .tcp
+                .first()
+                .map(|l| l.backlog)
+                .unwrap_or(1024),
             idle_timeout: Duration::from_secs(
-                config.listeners.tcp.first().map(|l| l.idle_timeout).unwrap_or(10)
+                config
+                    .listeners
+                    .tcp
+                    .first()
+                    .map(|l| l.idle_timeout)
+                    .unwrap_or(10),
             ),
             max_connections: config.security.limits.max_tcp_connections,
-            tcp_fastopen: config.listeners.tcp.first().map(|l| l.tcp_fastopen).unwrap_or(true),
+            tcp_fastopen: config
+                .listeners
+                .tcp
+                .first()
+                .map(|l| l.tcp_fastopen)
+                .unwrap_or(true),
         })
     };
 
@@ -856,7 +898,7 @@ async fn run_server(config: Config, quiet: bool) -> Result<()> {
 
     // Create shutdown channel
     let (shutdown_tx, mut shutdown_rx) = broadcast::channel::<()>(1);
-    
+
     // Create reload channel
     let (reload_tx, mut reload_rx) = watch::channel(());
 
@@ -878,26 +920,30 @@ async fn run_server(config: Config, quiet: bool) -> Result<()> {
     let cache = build_cache(&config);
     let resolver = build_resolver(&config, cache.clone());
     let filter = build_filter(&config).await;
-    
+
     // Wire up cache provider to control state
     control_state.set_cache(Arc::new(DnsCacheProvider(cache.clone())));
-    
+
     // Wire up filter provider to control state
     if let Some(ref filter_engine) = filter {
         control_state.set_filter(Arc::new(FilterEngineProvider(filter_engine.clone())));
-        
+
         // Apply custom rules loaded from the rules file
         control_state.apply_loaded_rules();
-        
+
         // Register blocklists in control state
         let filter_stats = filter_engine.stats();
         for blocklist_config in &config.filter.blocklists {
             control_state.register_blocklist(BlocklistInfo {
                 name: blocklist_config.name.clone(),
                 source: blocklist_config.url.clone(),
-                format: blocklist_config.format.clone().unwrap_or_else(|| "auto".to_string()),
+                format: blocklist_config
+                    .format
+                    .clone()
+                    .unwrap_or_else(|| "auto".to_string()),
                 enabled: blocklist_config.enabled,
-                rule_count: filter_stats.total_rules as u64 / config.filter.blocklists.len().max(1) as u64,
+                rule_count: filter_stats.total_rules as u64
+                    / config.filter.blocklists.len().max(1) as u64,
                 last_updated: None,
                 next_update: None,
                 last_error: None,
@@ -960,9 +1006,12 @@ async fn run_server(config: Config, quiet: bool) -> Result<()> {
     }
 
     // Start control server
-    let control_socket_path = config.control.socket_path.clone()
+    let control_socket_path = config
+        .control
+        .socket_path
+        .clone()
         .unwrap_or_else(|| PathBuf::from("/var/run/stria/control.sock"));
-    
+
     let control_server = ControlServer::new(control_state.clone());
     let control_socket = control_socket_path.clone();
     tokio::spawn(async move {
@@ -1073,18 +1122,28 @@ async fn run_server(config: Config, quiet: bool) -> Result<()> {
 
 /// Validate configuration file
 fn validate_config(path: Option<PathBuf>, verbose: bool) -> Result<()> {
-    let config_path = find_config_file(path)
-        .context("No configuration file found")?;
+    let config_path = find_config_file(path).context("No configuration file found")?;
 
     println!("Validating configuration: {}", config_path.display());
 
-    let config = Config::from_file(&config_path)
-        .with_context(|| format!("Failed to load configuration from {}", config_path.display()))?;
+    let config = Config::from_file(&config_path).with_context(|| {
+        format!(
+            "Failed to load configuration from {}",
+            config_path.display()
+        )
+    })?;
 
     if verbose {
         println!("\n{}", style("Configuration loaded:").green().bold());
         println!("  Server name: {}", config.server.name);
-        println!("  Workers: {}", if config.server.workers == 0 { "auto".to_string() } else { config.server.workers.to_string() });
+        println!(
+            "  Workers: {}",
+            if config.server.workers == 0 {
+                "auto".to_string()
+            } else {
+                config.server.workers.to_string()
+            }
+        );
         println!("  UDP listeners: {}", config.listeners.udp.len());
         println!("  TCP listeners: {}", config.listeners.tcp.len());
         println!("  DoT listeners: {}", config.listeners.dot.len());
@@ -1097,7 +1156,8 @@ fn validate_config(path: Option<PathBuf>, verbose: bool) -> Result<()> {
         println!("  Metrics enabled: {}", config.metrics.enabled);
     }
 
-    config.validate()
+    config
+        .validate()
         .with_context(|| "Configuration validation failed")?;
 
     println!("{}", style("Configuration is valid!").green().bold());
@@ -1110,11 +1170,19 @@ fn print_version(verbose: bool) {
     let name = env!("CARGO_PKG_NAME");
 
     if verbose {
-        println!("{} {}", style(name).cyan().bold(), style(format!("v{}", version)).dim());
+        println!(
+            "{} {}",
+            style(name).cyan().bold(),
+            style(format!("v{}", version)).dim()
+        );
         println!();
-        println!("  {}: {}", style("Build target").dim(), std::env::consts::ARCH);
+        println!(
+            "  {}: {}",
+            style("Build target").dim(),
+            std::env::consts::ARCH
+        );
         println!("  {}: {}", style("OS").dim(), std::env::consts::OS);
-        
+
         // Feature flags
         let mut features = Vec::new();
         #[cfg(feature = "doh")]
@@ -1133,7 +1201,7 @@ fn print_version(verbose: bool) {
         features.push("zones");
         #[cfg(feature = "io-uring")]
         features.push("io-uring");
-        
+
         println!("  {}: {}", style("Features").dim(), features.join(", "));
         println!();
     } else {
@@ -1164,7 +1232,10 @@ async fn main() -> Result<()> {
     } else {
         // Use default configuration
         if !cli.quiet {
-            eprintln!("{}", style("No configuration file found, using defaults").yellow());
+            eprintln!(
+                "{}",
+                style("No configuration file found, using defaults").yellow()
+            );
         }
         Config::default()
     };
@@ -1215,10 +1286,16 @@ mod tests {
 
         // Test validate command
         let cli = Cli::try_parse_from(["stria", "validate", "--verbose"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Validate { verbose: true })));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Validate { verbose: true })
+        ));
 
         // Test version command
         let cli = Cli::try_parse_from(["stria", "version"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Version { verbose: false })));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Version { verbose: false })
+        ));
     }
 }

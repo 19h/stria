@@ -239,7 +239,10 @@ impl MX {
     /// Creates a new MX record.
     #[inline]
     pub fn new(preference: u16, exchange: Name) -> Self {
-        Self { preference, exchange }
+        Self {
+            preference,
+            exchange,
+        }
     }
 
     /// Returns the preference value.
@@ -265,7 +268,10 @@ impl MX {
         let parser = NameParser::new(message);
         let (exchange, _) = parser.parse_name(offset + 2)?;
 
-        Ok(Self { preference, exchange })
+        Ok(Self {
+            preference,
+            exchange,
+        })
     }
 
     /// Returns the wire format length.
@@ -349,10 +355,7 @@ mod tests {
         // Query for child.source.example should be redirected to child.target.example
         let qname = Name::from_str("child.source.example").unwrap();
         let result = dname.synthesize_cname(&qname, &owner);
-        assert_eq!(
-            result.unwrap().to_string(),
-            "child.target.example."
-        );
+        assert_eq!(result.unwrap().to_string(), "child.target.example.");
 
         // Query for grandchild.child.source.example
         let qname2 = Name::from_str("grandchild.child.source.example").unwrap();
